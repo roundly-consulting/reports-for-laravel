@@ -1,3 +1,11 @@
+<!-- roundly-hero:start -->
+<p align="center">
+  <a href="https://roundly-consulting.com/open-source/docs/reports-for-laravel?utm_source=github&utm_medium=readme&utm_campaign=open-source&utm_content=reports-for-laravel">
+    <img src="art/hero.png" alt="Reports for Laravel — Roundly open source" width="100%">
+  </a>
+</p>
+<!-- roundly-hero:end -->
+
 # Reports for Laravel
 
 A content-moderation and flagging foundation for Laravel. Let any model **file** reports
