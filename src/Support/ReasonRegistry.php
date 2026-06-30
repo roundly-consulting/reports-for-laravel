@@ -46,19 +46,11 @@ final class ReasonRegistry
     }
 
     /**
-     * The human-friendly label for a reason slug, falling back to the slug itself.
+     * The human-friendly label for a reason slug. Known reasons read their readable
+     * label from the enums Helpers trait; custom slugs fall back to the slug itself.
      */
     public function label(string $slug): string
     {
-        $reason = Reason::tryFrom($slug);
-
-        if ($reason instanceof Reason) {
-            return $reason->label();
-        }
-
-        $key = "reports::reasons.{$slug}";
-        $translation = trans($key);
-
-        return is_string($translation) && $translation !== $key ? $translation : $slug;
+        return Reason::tryFrom($slug)?->label() ?? $slug;
     }
 }

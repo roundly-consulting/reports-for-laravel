@@ -4,25 +4,16 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Reports\Enums;
 
+use RoundlyConsulting\Enums\Helpers;
+
 enum Reason: string
 {
+    use Helpers;
+
     case Spam = 'spam';
     case Abuse = 'abuse';
     case Harassment = 'harassment';
     case Inappropriate = 'inappropriate';
     case Misinformation = 'misinformation';
     case Other = 'other';
-
-    /**
-     * The human-friendly, translatable label for this reason.
-     */
-    public function label(): string
-    {
-        $key = "reports::reasons.{$this->value}";
-        $translation = trans($key);
-
-        return is_string($translation) && $translation !== $key
-            ? $translation
-            : ucfirst($this->value);
-    }
 }

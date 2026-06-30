@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Reports\Enums;
 
+use RoundlyConsulting\Enums\Helpers;
+
 enum Status: string
 {
+    use Helpers;
+
     case Pending = 'pending';
     case InReview = 'in_review';
     case Resolved = 'resolved';
