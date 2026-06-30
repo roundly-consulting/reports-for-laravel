@@ -46,3 +46,10 @@ it('knows which statuses are open', function (): void {
 
     expect(Status::open())->toBe([Status::Pending, Status::InReview]);
 });
+
+it('exposes the enums collection helpers', function (): void {
+    expect(Status::values()->all())->toBe(['pending', 'in_review', 'resolved', 'rejected', 'closed'])
+        ->and(Status::validationRule())->toBe('in:pending,in_review,resolved,rejected,closed')
+        ->and(Status::InReview->readable())->toBe('In Review')
+        ->and(Status::toOptions()->get('resolved'))->toBe('Resolved');
+});

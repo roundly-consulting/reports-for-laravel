@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Contracts\Console\Kernel;
+use RoundlyConsulting\Approvals\Events\ApprovalRequestResolved;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportsManager;
 
@@ -24,6 +25,7 @@ it('registers the artisan commands', function (): void {
         ->and($commands)->toContain('reports:recount');
 });
 
-it('loads the reasons translation namespace', function (): void {
-    expect(trans('reports::reasons.spam'))->toBe('Spam');
+it('registers the moderation status-sync listener', function (): void {
+    expect(app('events')->getListeners(ApprovalRequestResolved::class))
+        ->not->toBeEmpty();
 });
