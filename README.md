@@ -10,16 +10,27 @@
 
 A content-moderation and flagging foundation for Laravel. Let any model **file** reports
 (e.g. a `User`, or anonymous guests) against any **reportable** model (e.g. a `Post`), tag
-each report with a typed, translatable reason, move it through a guarded status lifecycle,
-prevent duplicate spam, surface aggregation insights, and react to threshold crossings and
-lifecycle changes via events — with a fluent facade, Action classes, and DTOs underneath.
-
-It depends only on Laravel itself (no third-party runtime dependencies).
+each report with a typed reason, move it through a guarded status lifecycle, prevent
+duplicate spam, surface aggregation insights, **route resolution through multi-moderator
+sign-off**, and react to threshold crossings and lifecycle changes via events — with a fluent
+facade, Action classes, and DTOs underneath.
 
 ## Requirements
 
 - PHP 8.4+
 - Laravel 12 or 13
+
+## Integrates with
+
+Reports builds on two of our own packages (installed automatically as dependencies):
+
+- [`approvals-for-laravel`](https://github.com/roundly-consulting/approvals-for-laravel) —
+  a `Report` is an approvals **subject**, so resolving/rejecting a report can require N
+  moderators to agree (unanimous / quorum / any / weighted) before it changes status. See
+  **Moderation** below.
+- [`enums-for-laravel`](https://github.com/roundly-consulting/enums-for-laravel) — the
+  `Status` and `Reason` enums adopt its `Helpers` trait
+  (`values()`/`labels()`/`options()`/`toOptions()`/`validationRule()`/`readable()`/…).
 
 ## Installation
 
@@ -42,12 +53,6 @@ Optionally publish the config file:
 php artisan vendor:publish --tag="reports-config"
 ```
 
-Optionally publish the reason translations to customise their labels:
-
-```bash
-php artisan vendor:publish --tag="reports-translations"
-```
-
 ## Configuration
 
 The published config file (`config/reports.php`):
@@ -65,8 +70,16 @@ return [
     'strict_transitions' => true,
     'threshold' => null,
     'prune_after_days' => null,
+    'moderation' => [
+        'default_rule' => 'unanimous',
+        'default_quorum' => null,
+    ],
 ];
 ```
+
+The `moderation` block seeds the `Reports::moderate()` builder. `default_rule` is an
+`ApprovalRule` value (`unanimous`, `quorum`, `any`, `weighted`); `default_quorum` is the
+approval count used by the `quorum` rule (`null` = require every declared moderator).
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
@@ -121,7 +134,7 @@ use RoundlyConsulting\Reports\Facades\Reports;
 
 $report = Reports::report($post)
     ->by($user)
-    ->for(Reason::Abuse)            // typed, validated, translatable label
+    ->for(Reason::Abuse)            // typed, validated reason
     ->because('This post violates the community guidelines.')
     ->create();
 ```
@@ -156,13 +169,17 @@ $user->report($post)->for(Reason::Spam)->because('Spammy.')->create();
 
 Reports are tagged with a reason slug validated against `config('reports.reasons')`. Filing
 a report with a disallowed slug throws `UnknownReportReasonException` (unless
-`allow_unknown_reasons` is `true`). Default reasons map to the `Reason` enum, which exposes
-a translatable label:
+`allow_unknown_reasons` is `true`). Default reasons map to the `Reason` enum, which adopts
+the `enums-for-laravel` `Helpers` trait:
 
 ```php
 use RoundlyConsulting\Reports\Enums\Reason;
 
-Reason::Abuse->label(); // "Abuse" (translatable via reports::reasons.abuse)
+Reason::Abuse->label();      // "Abuse"
+Reason::Inappropriate->readable(); // "Inappropriate"
+Reason::values();            // ['spam', 'abuse', 'harassment', ...]
+Reason::validationRule();    // "in:spam,abuse,harassment,inappropriate,misinformation,other"
+Reason::toOptions();         // ['spam' => 'Spam', 'abuse' => 'Abuse', ...]
 ```
 
 ### Status lifecycle
@@ -187,6 +204,53 @@ Reports::reject($report, by: $admin, note: 'Not a violation.');
 
 Both record the resolver, a timestamp, and the note, and fire `ReportResolved` /
 `ReportRejected`.
+
+### Moderation (multi-moderator sign-off)
+
+By default a single call to `Reports::resolve()` / `reject()` settles a report immediately.
+To require **several moderators to agree** first, open a moderation request — the report
+becomes a [`approvals-for-laravel`](https://github.com/roundly-consulting/approvals-for-laravel)
+subject and the engine's rule decides when the bar is met.
+
+Moderators are any model using the approvals `GivesApprovals` trait:
+
+```php
+use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Approvals\Interfaces\GivesApprovalsInterface;
+use RoundlyConsulting\Approvals\Traits\GivesApprovals;
+
+class User extends Model implements GivesApprovalsInterface
+{
+    use GivesApprovals;
+}
+```
+
+Open a moderation request, then route decisions through the same `resolve()` / `reject()`:
+
+```php
+use RoundlyConsulting\Approvals\Enums\ApprovalRule;
+use RoundlyConsulting\Reports\Facades\Reports;
+
+// Require 2 of the named moderators to agree.
+Reports::moderate($report)
+    ->requiring([$alice, $bob, $carol])
+    ->rule(ApprovalRule::Quorum)
+    ->quorum(2)
+    ->open();
+
+Reports::resolve($report, by: $alice);            // 1 of 2 — report stays open
+Reports::resolve($report, by: $bob, note: 'Spam'); // quorum reached → Resolved
+```
+
+When the rule's threshold is reached the report's status is synced automatically (the
+`SyncReportStatusFromApproval` listener), stamping the deciding moderator + reason and
+re-emitting `ReportResolved` / `ReportRejected` / `ReportStatusChanged` — so the event
+surface is identical whether a report was settled directly or through moderation. A single
+rejection under the `Unanimous` rule rejects the report. Available rules: `Unanimous`,
+`Quorum`, `Any`, `Weighted`.
+
+> Resolving with a `null` actor, or an actor that can't give approvals, always settles the
+> report immediately, even when a moderation request is open.
 
 ### Duplicate prevention
 
