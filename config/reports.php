@@ -50,8 +50,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | The allowed reason slugs a report can be filed under. Defaults mirror the
-    | Reason enum; you may add your own custom slugs here (each can be given a
-    | translatable label in the reports::reasons translation file).
+    | Reason enum; you may add your own custom slugs here. Labels are derived from
+    | the slug via the enums Helpers trait (Reason::readable()).
     |
     */
 
@@ -116,5 +116,24 @@ return [
     */
 
     'prune_after_days' => null,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Moderation
+    |--------------------------------------------------------------------------
+    |
+    | Multi-moderator sign-off is routed through approvals-for-laravel. These
+    | defaults seed the Reports::moderate() builder when no rule/quorum is given.
+    |
+    | "default_rule" is an ApprovalRule value: "unanimous", "quorum", "any" or
+    | "weighted". "default_quorum" is the approval count for the "quorum" rule
+    | (null = require every declared moderator).
+    |
+    */
+
+    'moderation' => [
+        'default_rule' => 'unanimous',
+        'default_quorum' => null,
+    ],
 
 ];

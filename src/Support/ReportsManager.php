@@ -30,6 +30,11 @@ final class ReportsManager
         return (new PendingReport($this->createReport, $this->reasons))->by($reporter);
     }
 
+    public function moderate(Report $report): PendingModeration
+    {
+        return new PendingModeration($report);
+    }
+
     public function resolve(Report $report, ?Model $by = null, ?string $note = null): Report
     {
         return $this->resolveReport->execute($report, new ResolveReportData(resolver: $by, note: $note));

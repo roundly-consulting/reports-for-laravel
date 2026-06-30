@@ -6,10 +6,14 @@ namespace RoundlyConsulting\Reports\Models;
 
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use RoundlyConsulting\Approvals\Interfaces\RequiresApprovalInterface;
+use RoundlyConsulting\Approvals\Models\ApprovalRequest;
+use RoundlyConsulting\Approvals\Traits\RequiresApproval;
 use RoundlyConsulting\Reports\Database\Factories\ReportFactory;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportCreated;
@@ -36,12 +40,14 @@ use RoundlyConsulting\Reports\Exceptions\InvalidStatusTransitionException;
  * @property-read Model|null $reporter
  * @property-read Model|null $reported
  * @property-read Model|null $resolvedBy
+ * @property-read Collection<int, ApprovalRequest> $approvalRequests
  */
-final class Report extends Model
+final class Report extends Model implements RequiresApprovalInterface
 {
     /** @use HasFactory<ReportFactory> */
     use HasFactory;
 
+    use RequiresApproval;
     use SoftDeletes;
 
     protected $guarded = [];
