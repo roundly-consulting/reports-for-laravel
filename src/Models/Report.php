@@ -41,8 +41,11 @@ use RoundlyConsulting\Reports\Exceptions\InvalidStatusTransitionException;
  * @property-read Model|null $reported
  * @property-read Model|null $resolvedBy
  * @property-read Collection<int, ApprovalRequest> $approvalRequests
+ *
+ * Deliberately not `final`: `config('reports.model')` documents pointing the
+ * package at your own subclass, which `final` made impossible.
  */
-final class Report extends Model implements RequiresApprovalInterface
+class Report extends Model implements RequiresApprovalInterface
 {
     /** @use HasFactory<ReportFactory> */
     use HasFactory;
