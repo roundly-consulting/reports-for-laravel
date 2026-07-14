@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Reports\Commands;
 use Illuminate\Console\Command;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\Support\ReportModel;
 
 final class RecountReportsCommand extends Command
 {
@@ -58,9 +59,6 @@ final class RecountReportsCommand extends Command
 
     private function newReport(): Report
     {
-        /** @var class-string<Report> $model */
-        $model = config('reports.model', Report::class);
-
-        return new $model;
+        return ReportModel::new();
     }
 }

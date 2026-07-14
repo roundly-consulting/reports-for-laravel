@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\Support\ReportModel;
 
 final class PruneReportsCommand extends Command
 {
@@ -72,9 +73,6 @@ final class PruneReportsCommand extends Command
 
     private function newReport(): Report
     {
-        /** @var class-string<Report> $model */
-        $model = config('reports.model', Report::class);
-
-        return new $model;
+        return ReportModel::new();
     }
 }

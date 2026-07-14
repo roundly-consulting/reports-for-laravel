@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\Support\ReportModel;
 
 trait HasReports
 {
@@ -103,9 +104,6 @@ trait HasReports
      */
     private function reportModel(): string
     {
-        /** @var class-string<Report> $model */
-        $model = config('reports.model', Report::class);
-
-        return $model;
+        return ReportModel::class();
     }
 }

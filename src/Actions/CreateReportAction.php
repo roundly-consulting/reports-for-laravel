@@ -11,6 +11,7 @@ use RoundlyConsulting\Reports\Exceptions\DuplicateReportException;
 use RoundlyConsulting\Reports\Exceptions\UnknownReportReasonException;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
+use RoundlyConsulting\Reports\Support\ReportModel;
 
 final class CreateReportAction
 {
@@ -114,9 +115,6 @@ final class CreateReportAction
 
     private function newReport(): Report
     {
-        /** @var class-string<Report> $model */
-        $model = config('reports.model', Report::class);
-
-        return new $model;
+        return ReportModel::new();
     }
 }

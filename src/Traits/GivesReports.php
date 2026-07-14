@@ -12,6 +12,7 @@ use RoundlyConsulting\Reports\Enums\Reason;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\Support\PendingReport;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
+use RoundlyConsulting\Reports\Support\ReportModel;
 
 trait GivesReports
 {
@@ -55,9 +56,6 @@ trait GivesReports
      */
     private function reportModel(): string
     {
-        /** @var class-string<Report> $model */
-        $model = config('reports.model', Report::class);
-
-        return $model;
+        return ReportModel::class();
     }
 }
