@@ -22,7 +22,7 @@ facade, Action classes, and DTOs underneath.
 
 ## Integrates with
 
-Reports builds on two of our own packages (installed automatically as dependencies):
+Reports builds on three of our own packages (installed automatically as dependencies):
 
 - [`approvals-for-laravel`](https://github.com/roundly-consulting/approvals-for-laravel) —
   a `Report` is an approvals **subject**, so resolving/rejecting a report can require N
@@ -31,6 +31,9 @@ Reports builds on two of our own packages (installed automatically as dependenci
 - [`enums-for-laravel`](https://github.com/roundly-consulting/enums-for-laravel) — the
   `Status` and `Reason` enums adopt its `Helpers` trait
   (`values()`/`labels()`/`options()`/`toOptions()`/`validationRule()`/`readable()`/…).
+- [`package-toolkit-for-laravel`](https://github.com/roundly-consulting/package-toolkit-for-laravel) —
+  the service provider, the `about` section, and the key-type aware schema macros the
+  migration uses (`key_type` = `bigint` / `uuid` / `ulid`).
 
 ## Installation
 
@@ -40,12 +43,16 @@ Install the package via Composer:
 composer require roundly-consulting/reports-for-laravel
 ```
 
-Publish and run the migration:
+Publish and run the migration — migrations are **publish-only**, so a bare
+`php artisan migrate` does not create the `reports` table until you publish it:
 
 ```bash
 php artisan vendor:publish --tag="reports-migrations"
 php artisan migrate
 ```
+
+> Publish the config **first** if you use a non-default `key_type` or `table` — the
+> migration reads both.
 
 Optionally publish the config file:
 
@@ -61,7 +68,7 @@ The published config file (`config/reports.php`):
 return [
     'model' => RoundlyConsulting\Reports\Models\Report::class,
     'table' => 'reports',
-    'morph_key_type' => 'bigint',
+    'key_type' => env('REPORTS_KEY_TYPE', 'bigint'),
     'default_reason' => 'other',
     'reasons' => ['spam', 'abuse', 'harassment', 'inappropriate', 'misinformation', 'other'],
     'allow_unknown_reasons' => false,
@@ -85,7 +92,7 @@ approval count used by the `quorum` rule (`null` = require every declared modera
 |---|---|---|---|
 | `model` | `class-string` | `Report::class` | The Eloquent model used to store reports. Point at your own subclass to customise. |
 | `table` | `string` | `'reports'` | The database table reports are stored in. |
-| `morph_key_type` | `'bigint'\|'uuid'` | `'bigint'` | Key type for the polymorphic reporter / reported / resolved_by columns. Use `uuid` for UUID-keyed models. |
+| `key_type` | `'bigint'\|'uuid'\|'ulid'` | `'bigint'` (env `REPORTS_KEY_TYPE`) | Key type for the polymorphic reporter / reported / resolved_by columns. Use `uuid`/`ulid` for UUID/ULID-keyed models. Any unrecognized value silently falls back to `bigint`. |
 | `default_reason` | `string` | `'other'` | The reason used when a report is filed without one. |
 | `reasons` | `list<string>` | enum values | The allowed reason slugs. Add your own custom slugs here. |
 | `allow_unknown_reasons` | `bool` | `false` | When `true`, any reason slug is accepted (no validation). |
@@ -98,8 +105,9 @@ approval count used by the `quorum` rule (`null` = require every declared modera
 The package works with zero published configuration — these defaults are merged in
 automatically.
 
-> **UUID hosts:** when `morph_key_type` is `uuid`, your reporter, reportable, and resolver
-> models must use string/UUID primary keys.
+> **UUID / ULID hosts:** when `key_type` is `uuid` or `ulid`, your reporter, reportable, and
+> resolver models must use string primary keys (`HasUuids` / `HasUlids`). Set it **before**
+> you migrate — it decides the column types of the morph keys.
 
 ## Usage
 

@@ -31,18 +31,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Morph Key Type
+    | Key Type
     |--------------------------------------------------------------------------
     |
     | The key type used for the polymorphic reporter / reported / resolved_by
-    | columns. Use "uuid" when your reporter and reportable models use UUID
-    | primary keys, otherwise leave it as "bigint".
+    | columns. Use "uuid" or "ulid" when your reporter and reportable models use
+    | UUID/ULID primary keys, otherwise leave it as "bigint". Any unrecognized
+    | value falls back to "bigint".
     |
-    | Supported: "bigint", "uuid"
+    | Supported: "bigint", "uuid", "ulid"
     |
     */
 
-    'morph_key_type' => 'bigint',
+    'key_type' => env('REPORTS_KEY_TYPE', 'bigint'),
 
     /*
     |--------------------------------------------------------------------------
