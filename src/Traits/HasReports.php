@@ -76,14 +76,34 @@ trait HasReports
     }
 
     /**
+     * Subjects with more than $threshold reports, optionally counting only one status.
+     *
+     * The filter goes through `whereHas`, not `having('reports_count', …)`.
+     * `withCount()` compiles to a correlated **subquery** aliased `reports_count`, and a
+     * select alias is not visible to `HAVING` on a standards-following engine — HAVING is
+     * evaluated before the select list exists. SQLite resolves the alias anyway and
+     * Postgres raises `column "reports_count" does not exist`, so this scope threw on
+     * every real engine while its tests stayed green.
+     *
+     * The `groupBy` that stood here went with it: it was a leftover from a JOIN-shaped
+     * mental model. A correlated subquery aggregates nothing in the outer query, so there
+     * was never a group to form — and grouping by the key alone would itself be invalid
+     * on Postgres beside a `select *`.
+     *
+     * `withCount` stays so the caller still gets the `reports_count` attribute.
+     *
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeReportedMoreThan(Builder $query, int $threshold, ?Status $onlyStatus = null): Builder
     {
         return $query->withCount(['reports' => fn (Builder $reports): Builder => $this->constrainByStatus($reports, $onlyStatus)])
-            ->groupBy($this->getQualifiedKeyName())
-            ->having('reports_count', '>', $threshold);
+            ->whereHas(
+                'reports',
+                fn (Builder $reports): Builder => $this->constrainByStatus($reports, $onlyStatus),
+                '>',
+                $threshold,
+            );
     }
 
     /**
