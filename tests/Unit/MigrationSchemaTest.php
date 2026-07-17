@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use RoundlyConsulting\PackageToolkit\Enums\DatabaseDriver;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Testing\Database\DriverMatrix;
 
 function runReportsMigration(): void
 {
@@ -15,8 +17,9 @@ function runReportsMigration(): void
 }
 
 /**
- * The emitted `CREATE TABLE` statement, so a key-type regression cannot hide
- * behind a column-existence assertion.
+ * The emitted `CREATE TABLE` statement, so a key-type regression cannot hide behind a
+ * column-existence assertion. SQLite-only by construction — `sqlite_master` is the
+ * catalog, and this whole helper is why the cases using it are driver-gated below.
  */
 function emittedCreateTable(string $table): string
 {
@@ -37,7 +40,33 @@ function emittedIndexes(string $table): array
     return array_values(array_map(static fn (object $row): string => $row->name, $rows));
 }
 
-it('creates all expected columns with the bigint key type', function (): void {
+/**
+ * The Postgres catalog's answer for a column: the real type, and its length where it has
+ * one. This is what makes the key-type cases below able to fail at all.
+ */
+function pgsqlColumnType(string $table, string $column): string
+{
+    /** @var list<object{data_type: string, character_maximum_length: int|null}> $rows */
+    $rows = DB::select(
+        'select data_type, character_maximum_length from information_schema.columns where table_name = ? and column_name = ?',
+        [$table, $column],
+    );
+
+    $row = $rows[0] ?? null;
+
+    if ($row === null) {
+        return 'MISSING';
+    }
+
+    return $row->character_maximum_length === null
+        ? $row->data_type
+        : $row->data_type.'('.$row->character_maximum_length.')';
+}
+
+$sqliteOnly = fn (): bool => DriverMatrix::driver() !== 'sqlite';
+$pgsqlOnly = fn (): bool => DriverMatrix::driver() !== 'pgsql';
+
+it('creates all expected columns', function (): void {
     config()->set('reports.key_type', 'bigint');
     config()->set('reports.table', 'reports');
 
@@ -52,8 +81,6 @@ it('creates all expected columns with the bigint key type', function (): void {
         'guest_identifier', 'resolved_at',
         'created_at', 'updated_at', 'deleted_at',
     ]))->toBeTrue();
-
-    expect(Schema::getColumnType('reports', 'reporter_id'))->toBe('integer');
 });
 
 it('emits the frozen bigint schema byte-for-byte', function (): void {
@@ -83,7 +110,7 @@ it('emits the frozen bigint schema byte-for-byte', function (): void {
         'reports_resolved_by_type_resolved_by_id_index',
         'reports_status_index',
     ]);
-});
+})->skip($sqliteOnly, 'sqlite_master is the sqlite catalog');
 
 it('persists a guest report with a null reporter', function (): void {
     runReportsMigration();
@@ -94,44 +121,47 @@ it('persists a guest report with a null reporter', function (): void {
         ->and($report->guest_identifier)->toBe('hash');
 });
 
-it('creates uuid morph columns when configured', function (): void {
-    config()->set('reports.key_type', 'uuid');
-    config()->set('reports.table', 'uuid_reports');
+/**
+ * The key-type cases, on the only engine that can answer them.
+ *
+ * These used to run on SQLite and assert `getColumnType(...)` is `integer` for bigint,
+ * and merely `not->toBe('integer')` / `toContain('"reporter_id" varchar')` for uuid and
+ * ulid. Every one of those was **structurally incapable of biting**, which is the exact
+ * finding the package-toolkit row made against this same class of assertion:
+ *
+ *  - SQLite reports `unsignedBigInteger()` and `integer()` **alike** as `integer`, so the
+ *    bigint pin could not catch the 32-bit downgrade the toolkit found in `ownerKey`;
+ *  - SQLite stores uuid and ulid **both** as `varchar`, so the uuid case passed verbatim
+ *    against a ulid column and vice versa. Two tests, one indistinguishable assertion.
+ *
+ * `reports.key_type` is this package's headline config — the whole reason a uuid/ulid host
+ * can use it — and it had only ever been checked on the one engine that cannot tell the
+ * three apart. Postgres reports `bigint`, `uuid` and `character(26)` distinctly, so here
+ * the assertion has something to say.
+ */
+it('renders each configured key type as a distinct real column type', function (string $keyType, string $expected): void {
+    config()->set('reports.key_type', $keyType);
+    config()->set('reports.table', 'kt_reports');
 
-    runReportsMigration();
+    Schema::dropIfExists('kt_reports');
+    $migration = require __DIR__.'/../../database/migrations/create_reports_table.php';
+    $migration->up();
 
-    expect(Schema::hasColumns('uuid_reports', [
-        'reporter_id', 'reporter_type', 'reported_id', 'resolved_by_id',
-    ]))->toBeTrue();
+    // Every polymorphic id column follows the configured type, not just the first.
+    expect(pgsqlColumnType('kt_reports', 'reporter_id'))->toBe($expected)
+        ->and(pgsqlColumnType('kt_reports', 'reported_id'))->toBe($expected)
+        ->and(pgsqlColumnType('kt_reports', 'resolved_by_id'))->toBe($expected)
+        // The morph *type* column is a string on every key type — it names a class.
+        ->and(pgsqlColumnType('kt_reports', 'reported_type'))->toBe('character varying(255)');
 
-    // SQLite reports uuid columns as varchar/text, not integer.
-    expect(Schema::getColumnType('uuid_reports', 'reporter_id'))->not->toBe('integer');
-    expect(emittedCreateTable('uuid_reports'))
-        ->toContain('"reporter_id" varchar')
-        ->toContain('"reported_id" varchar')
-        ->toContain('"resolved_by_id" varchar');
-
-    Schema::dropIfExists('uuid_reports');
-});
-
-it('creates ulid morph columns when configured', function (): void {
-    config()->set('reports.key_type', 'ulid');
-    config()->set('reports.table', 'ulid_reports');
-
-    runReportsMigration();
-
-    expect(Schema::hasColumns('ulid_reports', [
-        'reporter_id', 'reporter_type', 'reported_id', 'resolved_by_id',
-    ]))->toBeTrue();
-
-    expect(Schema::getColumnType('ulid_reports', 'reporter_id'))->not->toBe('integer');
-    expect(emittedCreateTable('ulid_reports'))
-        ->toContain('"reporter_id" varchar')
-        ->toContain('"reported_id" varchar')
-        ->toContain('"resolved_by_id" varchar');
-
-    Schema::dropIfExists('ulid_reports');
-});
+    Schema::dropIfExists('kt_reports');
+})->with([
+    // The shipped default. `bigint`, never `integer` — a 32-bit id column silently caps a
+    // host's table at 2.1bn rows, and SQLite calls both of them `integer`.
+    'bigint' => ['bigint', 'bigint'],
+    'uuid' => ['uuid', 'uuid'],
+    'ulid' => ['ulid', 'character(26)'],
+])->skip($pgsqlOnly, 'needs the postgres catalog to tell the key types apart');
 
 it('falls back to the bigint schema for an unrecognized key type', function (): void {
     config()->set('reports.key_type', 'nonsense');
@@ -139,7 +169,11 @@ it('falls back to the bigint schema for an unrecognized key type', function (): 
 
     runReportsMigration();
 
-    expect(Schema::getColumnType('fallback_reports', 'reporter_id'))->toBe('integer');
+    // Silently falling back is the documented behaviour: a typo in a host's config must
+    // never leave the package unable to migrate.
+    expect(Schema::hasColumn('fallback_reports', 'reporter_id'))->toBeTrue()
+        ->and(DatabaseDriver::current()->isPgsql() ? pgsqlColumnType('fallback_reports', 'reporter_id') : 'bigint')
+        ->toBe('bigint');
 
     Schema::dropIfExists('fallback_reports');
 });
