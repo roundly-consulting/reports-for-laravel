@@ -2,149 +2,107 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Str;
+use RoundlyConsulting\PackageToolkit\Enums\DatabaseDriver;
+use RoundlyConsulting\Reports\Enums\Reason;
+use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\ReportsServiceProvider;
+use RoundlyConsulting\Reports\Tests\PostTestModel;
+use RoundlyConsulting\Reports\Tests\UserTestModel;
+use RoundlyConsulting\Testing\Database\DriverMatrix;
 
 /**
- * @return list<string>
- */
-function migrationSources(): array
-{
-    $files = array_map(
-        static fn (string $file): string => (string) realpath($file),
-        (array) glob(__DIR__.'/../../database/migrations/*.php'),
-    );
-
-    sort($files);
-
-    return array_values($files);
-}
-
-/**
- * The `<table> => <migration file>` map of every table CREATEd by the package,
- * covering the literal (`Schema::create('x', …)`) and variable
- * (`Schema::create($tableName, …)`, config-driven) forms alike.
+ * This file replaces ~140 lines of hand-rolled reinvention: the suite carried its own
+ * `migrationSources()` globber, its own `createdTables()` regex scraper, its own FK-edge
+ * walker (three separate `preg_match_all` forms), and its own publish-and-migrate case
+ * that copied files into a temp directory and ran `migrate` against SQLite.
  *
- * @return array<string, string>
+ * The ideas were right — it even pinned the edge count so the parse could not go vacuous.
+ * But it checked the right ideas with the wrong engine: SQLite is the driver that cannot
+ * fail an ordering check, since it happily creates a table pointing at a missing parent
+ * and only complains at insert time. That is exactly how five packages shipped
+ * uninstallable migration orders under green suites.
  */
-function createdTables(): array
-{
-    $created = [];
+$migrations = __DIR__.'/../../database/migrations';
 
-    foreach (migrationSources() as $file) {
-        $source = (string) file_get_contents($file);
-
-        preg_match_all('/Schema::create\(\s*\'(\w+)\'/', $source, $matches);
-
-        foreach ($matches[1] as $table) {
-            $created[$table] = $file;
-        }
-
-        // A config-driven table name: the CREATE lives in this file even though
-        // the literal is in the config, so pin it by the migration's own name.
-        if (preg_match('/Schema::create\(\s*\$(\w+)/', $source) === 1) {
-            preg_match('/create_(\w+)_table/', basename($file), $named);
-            $created[$named[1] ?? basename($file)] = $file;
-        }
-    }
-
-    return $created;
-}
-
-it('never auto-loads its migrations', function (): void {
-    $paths = array_map(
-        static fn (string $path): string => (string) realpath($path),
-        app('migrator')->paths(),
-    );
-
-    // Migrations are publish-only: the provider must never register its own
-    // directory with the migrator.
-    expect($paths)->not->toContain((string) realpath(__DIR__.'/../../database/migrations'));
+/**
+ * P — the publish-only guards. The fleet publishes migrations timestamped rather than
+ * auto-loading them; doing both runs both copies and dies on a duplicate table (bug #5,
+ * on three packages). `count: 1` pins the file count so neither check can pass over an
+ * empty or relocated directory.
+ */
+it('never auto-loads its migrations — the host publishes them', function (): void {
+    expect(ReportsServiceProvider::class)->toNotAutoLoadMigrations();
 });
 
-it('publishes every migration source under the reports-migrations tag', function (): void {
-    $published = ServiceProvider::pathsToPublish(ReportsServiceProvider::class, 'reports-migrations');
-
-    expect(array_keys($published))->toBe(migrationSources());
-
-    foreach ($published as $source => $destination) {
-        expect($destination)
-            ->toStartWith(database_path('migrations'))
-            ->toMatch('/\/\d{4}_\d{2}_\d{2}_\d{6}_'.preg_quote(basename((string) $source), '/').'$/');
-    }
+it('publishes every migration timestamp-injected into the host', function (): void {
+    expect(ReportsServiceProvider::class)->toPublishMigrationsTimestamped('reports-migrations', 1);
 });
 
-it('keeps every foreign key behind the migration that creates its parent', function (): void {
-    $sources = migrationSources();
-    $created = createdTables();
-    $order = array_flip($sources);
+/**
+ * M — `toHaveRunnableMigrationOrder` — is deliberately NOT adopted, and this note is the
+ * cause rather than an omission.
+ *
+ * `MigrationGraph::assertRunnable()` checks two independent things and only one is about
+ * foreign keys: it also pins that a `Schema::table()` ALTER sorts at or after the CREATE
+ * of the table it alters (approvals #2). Reports ships **one CREATE, zero FK edges and
+ * zero ALTERs** — verified against the migration source, not the row spec — so *both*
+ * halves are inert. There is no edge to order and no ALTER to place.
+ *
+ * The contrast with its own provider is the clean illustration: `approvals` also has 0
+ * FKs but ships 2 ALTERs, so it adopts M with a `foreignKeys: 0` live pin; `connections`
+ * has 0 FKs and 0 ALTERs and rejects it, as this row does. Same FK count, opposite
+ * outcomes — the criterion is FK edges OR ALTERs.
+ *
+ * Every reporter/reported/resolved_by column is a `morphKey`, deliberately unconstrained
+ * because a host's reporter and subject can live in any table — and, being key-type
+ * configurable, may not even be a bigint. If a real FK or an ALTER is ever added, this
+ * row must adopt M rather than inherit this note.
+ */
 
-    $edges = 0;
+/**
+ * R — the real-engine proof. The deleted local version ran the published files against a
+ * throwaway **SQLite** database, which is the engine that cannot fail this class of
+ * check. `migrations: 1` pins the count, and the expectation additionally fails a set
+ * that "applies cleanly" while creating no tables — an empty `up()` otherwise passes and
+ * proves nothing.
+ *
+ * The negative control (`toRejectBrokenOrderOnConnection`) is deliberately NOT adopted:
+ * it asserts the engine *refuses* a reordered set, and with a single migration the
+ * reversed list is the same list — and with zero foreign keys Postgres has nothing to
+ * refuse regardless, so it would fail loudly by design. That is the assertion working
+ * correctly against a shape it does not fit, not a red to chase.
+ */
+it('applies its migrations on postgres', function () use ($migrations): void {
+    expect($migrations)->toApplyOnConnection('pgsql', migrations: 1);
+})->skip(fn (): bool => ! test()->connectionAvailable('pgsql'), 'no postgres connection available');
 
-    foreach ($sources as $file) {
-        $source = (string) file_get_contents($file);
-
-        $parents = [];
-
-        // ->constrained('parent')
-        preg_match_all('/->constrained\(\s*\'(\w+)\'/', $source, $explicit);
-        $parents = [...$parents, ...$explicit[1]];
-
-        // ->references('id')->on('parent')
-        preg_match_all('/->on\(\s*\'(\w+)\'/', $source, $longhand);
-        $parents = [...$parents, ...$longhand[1]];
-
-        // bare ->constrained() on foreignId('parent_id') — parent derived from the column
-        preg_match_all('/foreignId\(\s*\'(\w+)_id\'\s*\)->constrained\(\s*\)/', $source, $bare);
-        foreach ($bare[1] as $singular) {
-            $parents[] = Str::plural($singular);
-        }
-
-        foreach ($parents as $parent) {
-            $edges++;
-
-            // The parent's CREATE must exist, and must sort no later than the
-            // migration constraining onto it (a self-reference sorts with its
-            // own file).
-            expect($created)->toHaveKey($parent);
-            expect($order[$created[$parent]])->toBeLessThanOrEqual($order[$file]);
-        }
-
-        // An ALTER must follow the CREATE of the table it touches.
-        preg_match_all('/Schema::table\(\s*\'(\w+)\'/', $source, $altered);
-
-        foreach ($altered[1] as $table) {
-            expect($created)->toHaveKey($table);
-            expect($order[$created[$table]])->toBeLessThan($order[$file]);
-        }
-    }
-
-    // Guards the guard: reports ships exactly one migration and zero FK edges —
-    // if either changes, this pin must be revisited, not silently satisfied.
-    expect($sources)->toHaveCount(1)
-        ->and($created)->toHaveKey('reports')
-        ->and($edges)->toBe(0);
+/**
+ * The driver-truth pin. It compares the driver the leg *declares* (TESTING_DB_DRIVER)
+ * against what the connection itself *answers*, so a "pgsql" job that quietly ran on
+ * SQLite — the exact failure the whole leg exists to prevent — is impossible rather than
+ * merely detectable by reading a skip count. It caught the 3a decapitation.
+ */
+it('runs on the driver the leg declares', function (): void {
+    expect(DatabaseDriver::current())->toBe(DatabaseDriver::from(DriverMatrix::driver()));
 });
 
-it('migrates the published filenames into a fresh empty database', function (): void {
-    $directory = sys_get_temp_dir().'/reports-publish-'.uniqid();
-    File::makeDirectory($directory, recursive: true);
+/**
+ * The enum-backed `status`/`reason` columns and the key-type-aware morph columns are what
+ * the drivers render differently. Pinning a round-trip on whatever engine the leg
+ * configured proves the columns are usable rather than merely creatable.
+ */
+it('round-trips a report on the configured engine', function (): void {
+    $user = UserTestModel::query()->create();
+    $post = PostTestModel::query()->create();
 
-    $published = ServiceProvider::pathsToPublish(ReportsServiceProvider::class, 'reports-migrations');
+    $report = $user->giveReportTo($post, 'spamming every thread', Reason::Abuse);
+    $fresh = $report->fresh();
 
-    foreach ($published as $source => $destination) {
-        File::copy((string) $source, $directory.'/'.basename((string) $destination));
-    }
-
-    Schema::dropIfExists('reports');
-
-    $this->artisan('migrate', ['--path' => $directory, '--realpath' => true])->assertSuccessful();
-
-    expect(Schema::hasTable('reports'))->toBeTrue()
-        ->and(Schema::hasColumns('reports', ['reporter_id', 'reported_id', 'resolved_by_id', 'status']))->toBeTrue();
-
-    File::deleteDirectory($directory);
+    expect($fresh->status)->toBe(Status::Pending)
+        ->and($fresh->reason)->toBe(Reason::Abuse->value)
+        ->and($fresh->description)->toBe('spamming every thread')
+        ->and($fresh->reported_type)->toBe($post->getMorphClass())
+        ->and($fresh->reported_id)->toBe($post->getKey())
+        ->and($fresh->reporter_id)->toBe($user->getKey())
+        ->and($post->hasBeenReported())->toBeTrue();
 });
