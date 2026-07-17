@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Approvals\Events\ApprovalRequestResolved;
 use RoundlyConsulting\Reports\ReportsServiceProvider;
@@ -48,43 +47,8 @@ it('registers the key-type blueprint macros', function (): void {
         ->and(Blueprint::hasMacro('auditable'))->toBeTrue();
 });
 
-it('reports the package in about, without leaking moderation vocabulary', function (): void {
-    config()->set('reports.reasons', ['insider-trading-tip', 'staff-misconduct']);
-    config()->set('reports.default_reason', 'staff-misconduct');
-    config()->set('reports.threshold', 5);
-
-    Artisan::call('about', ['--only' => 'reports']);
-    $output = Artisan::output();
-
-    // Guards the guard: the section really did render.
-    expect($output)->toContain('Key type')
-        ->toContain('2 allowed')
-        ->toContain('5 open report(s)')
-        ->toContain('CUSTOM');
-
-    // A reason slug is the host's moderation vocabulary — it must never render.
-    expect($output)->not->toContain('insider-trading-tip')
-        ->and($output)->not->toContain('staff-misconduct');
-});
-
-it('reports every switched-off setting in about', function (): void {
-    config()->set('reports.prevent_duplicates', false);
-    config()->set('reports.strict_transitions', false);
-    config()->set('reports.prune_after_days', 30);
-    config()->set('reports.moderation.default_quorum', 2);
-
-    Artisan::call('about', ['--only' => 'reports']);
-    $output = Artisan::output();
-
-    expect($output)->toContain('30 day(s)')
-        ->toContain('DISABLED')
-        ->toContain('quorum 2');
-});
-
-it('reports the any duplicate scope in about', function (): void {
-    config()->set('reports.duplicate_scope', 'any');
-
-    Artisan::call('about', ['--only' => 'reports']);
-
-    expect(Artisan::output())->toContain('scope any');
-});
+// The `about` section's three scenarios — the leak surface, every switched-off
+// default, and the `any` duplicate scope — moved to AboutSectionTest.php, where they run
+// through the shared secret-safe capture. It enforces the ordering these cases
+// implemented by hand (non-empty output, then every mustRender string, and only then the
+// secret scan) by construction rather than by the author having remembered it.
