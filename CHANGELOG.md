@@ -1,34 +1,29 @@
 # Changelog
 
-All notable changes to `reports-for-laravel` will be documented in this file.
+All notable changes to `reports-for-laravel` are documented in this file. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
-Initial moderation-foundation feature set (pre-1.0; no prior tagged release, so these are
-the initial public API rather than breaking changes):
+Initial public release.
 
 ### Added
 
-- Fluent `Reports` facade and `PendingReport` builder backed by an Action layer and DTOs.
-- Config-driven schema: `table`, `morph_key_type` (`bigint`/`uuid`), reasons, duplicate
-  prevention, strict transitions, threshold, and prune defaults.
-- Typed, translatable, host-extensible report reasons (`Reason` enum + `ReasonRegistry` +
-  native JSON-free `resources/lang` labels).
-- Guarded status lifecycle (`Pending`, `InReview`, `Resolved`, `Rejected`, `Closed`) with a
-  transition table, resolution metadata, and `ReportResolved` / `ReportRejected` events.
-- Duplicate-report prevention (open/any scope) and guest / anonymous reporting.
-- Aggregation helpers and scopes (`reportsCount`, `hasBeenReported`, `isReportedBy`,
-  `withReportCounts`, `mostReported`, `reportedMoreThan`, `pendingReports`).
-- Threshold auto-action via the `ReportThresholdReached` event.
-- Package exceptions: `ReportsException`, `InvalidStatusTransitionException`,
-  `DuplicateReportException`, `UnknownReportReasonException`.
-- Artisan commands `reports:prune` (soft-delete by default, `--force` to hard-delete) and
-  `reports:recount`.
-
-### Changed
-
-- Renamed the report `type` column to `reason`.
-- Renamed `Status::New`/`Status::Solving` to `Status::Pending`/`Status::InReview` and added
-  `Resolved` / `Rejected`. Status backed values are now lowercase.
-- The reporter morph is now nullable (supports guests).
-- `changeStatusTo()` now guards transitions when `strict_transitions` is enabled.
+- Let any model file reports against any reportable model with the `GivesReports` and
+  `HasReports` traits, or anonymously as a guest via `asGuest()`.
+- A fluent `Reports` facade (`Reports::report($post)->by($user)->for(...)->because(...)->create()`)
+  backed by Action classes and DTOs.
+- Typed, validated reasons through the `Reason` enum, plus your own custom reason slugs from config.
+- A guarded status lifecycle (`Pending`, `InReview`, `Resolved`, `Rejected`, `Closed`) with
+  `changeStatusTo()`, `Reports::resolve()` and `Reports::reject()` recording who decided, when
+  and why.
+- Multi-moderator sign-off with `Reports::moderate()`: unanimous, quorum, any or weighted rules
+  built on `approvals-for-laravel`.
+- Duplicate-report prevention per reporter or guest, scoped to open reports or all reports.
+- Aggregation helpers and query scopes: `reportsCount()`, `isReportedBy()`, `withReportCounts()`,
+  `mostReported()` and `reportedMoreThan()`.
+- A `ReportThresholdReached` event when a subject crosses a configurable report count.
+- Lifecycle events: `ReportCreated`, `ReportStatusChanged`, `ReportResolved` and `ReportRejected`.
+- `reports:prune` and `reports:recount` Artisan commands.
+- Soft-deletable reports and `bigint` / `uuid` / `ulid` morph keys via the `key_type` config.
