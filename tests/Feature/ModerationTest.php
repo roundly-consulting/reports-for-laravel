@@ -94,14 +94,3 @@ it('resolves immediately when there is no open moderation request', function ():
         ->and($resolved->resolved_by_id)->toBe($admin->getKey())
         ->and($resolved->resolution_note)->toBe('Done.');
 });
-
-it('resolves immediately for a null actor even with an open moderation request', function (): void {
-    $report = Report::factory()->pending()->create();
-
-    Reports::moderate($report)->requiring([UserTestModel::create()])->open();
-
-    $resolved = Reports::resolve($report);
-
-    expect($resolved->status)->toBe(Status::Resolved)
-        ->and($resolved->resolved_by_id)->toBeNull();
-});

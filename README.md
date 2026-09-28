@@ -287,7 +287,8 @@ To require **several moderators to agree** first, open a moderation request — 
 becomes a [`approvals-for-laravel`](https://github.com/roundly-consulting/approvals-for-laravel)
 subject and the engine's rule decides when the bar is met.
 
-Moderators are any model using the approvals `GivesApprovals` trait:
+Moderators are saved Eloquent models — typically your `User` with the approvals
+`GivesApprovals` trait (which adds its `givenApprovals()` relation):
 
 ```php
 use Illuminate\Database\Eloquent\Model;
@@ -324,8 +325,23 @@ surface is identical whether a report was settled directly or through moderation
 rejection under the `Unanimous` rule rejects the report. Available rules: `Unanimous`,
 `Quorum`, `Any`, `Weighted`.
 
-> Resolving with a `null` actor, or an actor that can't give approvals, always settles the
-> report immediately, even when a moderation request is open.
+**Only the named moderators decide.** While the request is open
+(`$report->isUnderModeration()`), `resolve()` / `reject()` accept a moderator from the
+`requiring([...])` list, or an approvals delegate of one (recorded for the moderator). Anyone
+else is refused with `ModeratorRequiredException` and nothing is recorded — an outsider (the
+approvals engine's `UnauthorizedApprovalException` is its `getPrevious()`), a call without an
+actor, and a raw `changeStatus()` / `close()` out of the open statuses alike. `review()` still
+works. Once the request is decided, the report settles directly again.
+
+```php
+use RoundlyConsulting\Reports\Exceptions\ModeratorRequiredException;
+
+try {
+    Reports::resolve($report, by: $mallory); // not in requiring([...])
+} catch (ModeratorRequiredException $e) {
+    $e->report; $e->actor;                   // the report, and who was refused (null: no actor)
+}
+```
 
 ### Duplicate prevention
 

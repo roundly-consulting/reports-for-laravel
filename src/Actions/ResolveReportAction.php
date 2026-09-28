@@ -5,19 +5,21 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Reports\Actions;
 
 use Illuminate\Support\Carbon;
-use RoundlyConsulting\Approvals\Enums\ApprovalStatus;
+use RoundlyConsulting\Approvals\Exceptions\UnauthorizedApprovalException;
 use RoundlyConsulting\Approvals\Facades\Approvals;
-use RoundlyConsulting\Approvals\Interfaces\GivesApprovalsInterface;
 use RoundlyConsulting\Reports\DataTransferObjects\ResolveReportData;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportResolved;
+use RoundlyConsulting\Reports\Exceptions\ModeratorRequiredException;
 use RoundlyConsulting\Reports\Models\Report;
 
 /**
- * Resolves a report. When the report has an open moderation request and the actor
- * can give approvals, the decision is recorded through the approvals engine — its
- * rule decides when the bar is met and SyncReportStatusFromApproval owns the final
- * status. Otherwise the report resolves immediately (the original behaviour).
+ * Resolves a report. While a moderation request is open, the decision is recorded
+ * through the approvals engine — only a moderator the request names (or a delegate of
+ * one) may make it, its rule decides when the bar is met, and
+ * SyncReportStatusFromApproval owns the final status; anyone else, including a call
+ * without an actor, gets a ModeratorRequiredException. Otherwise the report resolves
+ * immediately.
  */
 final readonly class ResolveReportAction
 {
@@ -25,18 +27,8 @@ final readonly class ResolveReportAction
 
     public function execute(Report $report, ResolveReportData $data): Report
     {
-        $actor = $data->resolver;
-
-        if ($actor instanceof GivesApprovalsInterface && $this->hasOpenModeration($report)) {
-            $pending = Approvals::for($report)->as($actor);
-
-            if ($data->note !== null) {
-                $pending->because($data->note);
-            }
-
-            $pending->approve();
-
-            return $report->refresh();
+        if ($report->isUnderModeration()) {
+            return $this->decideThroughModeration($report, $data);
         }
 
         $report->resolved_by_id = $data->resolver?->getKey();
@@ -52,10 +44,22 @@ final readonly class ResolveReportAction
         return $report;
     }
 
-    private function hasOpenModeration(Report $report): bool
+    /**
+     * Record the actor's decision on the open moderation request; the approvals engine
+     * refuses anyone the request does not name (nor a delegate of one).
+     *
+     * @throws ModeratorRequiredException for a null actor or a non-moderator
+     */
+    private function decideThroughModeration(Report $report, ResolveReportData $data): Report
     {
-        return $report->approvalRequests()
-            ->where('status', ApprovalStatus::Pending)
-            ->exists();
+        $actor = $data->resolver ?? throw ModeratorRequiredException::withoutActor($report);
+
+        try {
+            Approvals::for($report)->as($actor)->because($data->note)->approve();
+        } catch (UnauthorizedApprovalException $e) {
+            throw ModeratorRequiredException::notAModerator($report, $actor, $e);
+        }
+
+        return $report->refresh();
     }
 }

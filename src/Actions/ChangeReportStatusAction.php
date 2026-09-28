@@ -7,12 +7,15 @@ namespace RoundlyConsulting\Reports\Actions;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportStatusChanged;
 use RoundlyConsulting\Reports\Exceptions\InvalidStatusTransitionException;
+use RoundlyConsulting\Reports\Exceptions\ModeratorRequiredException;
 use RoundlyConsulting\Reports\Models\Report;
 
 /**
  * Moves a report to a status and fires ReportStatusChanged. Staying on the current
  * status is a no-op; with `reports.strict_transitions` on, a move the Status graph
- * does not allow throws InvalidStatusTransitionException.
+ * does not allow throws InvalidStatusTransitionException. While a moderation request
+ * is open, a move out of the open statuses throws ModeratorRequiredException — the
+ * moderators settle the report, through resolve()/reject().
  */
 final class ChangeReportStatusAction
 {
@@ -20,6 +23,10 @@ final class ChangeReportStatusAction
     {
         if ($report->status === $status) {
             return $report;
+        }
+
+        if ($status->isTerminal() && $report->isUnderModeration()) {
+            throw ModeratorRequiredException::withoutActor($report);
         }
 
         if ($this->strictTransitions() && ! $report->status->canTransitionTo($status)) {

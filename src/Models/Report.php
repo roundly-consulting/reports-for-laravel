@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use RoundlyConsulting\Approvals\Enums\ApprovalStatus;
 use RoundlyConsulting\Approvals\Interfaces\RequiresApprovalInterface;
 use RoundlyConsulting\Approvals\Models\ApprovalRequest;
 use RoundlyConsulting\Approvals\Traits\RequiresApproval;
@@ -88,6 +89,17 @@ class Report extends Model implements RequiresApprovalInterface
         app(ReportsManager::class)->changeStatus($this, $status);
 
         return $this;
+    }
+
+    /**
+     * Whether a moderation request (an approvals request on this report) is still open.
+     * While it is, only the moderators it names settle the report.
+     */
+    public function isUnderModeration(): bool
+    {
+        return $this->approvalRequests()
+            ->where('status', ApprovalStatus::Pending->value)
+            ->exists();
     }
 
     /**
