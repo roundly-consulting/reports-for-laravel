@@ -145,7 +145,7 @@ class Post extends Model implements Reportable
 }
 ```
 
-### Filing a report (fluent facade — recommended)
+### Filing a report — the facade
 
 ```php
 use RoundlyConsulting\Reports\Enums\Reason;
@@ -164,6 +164,48 @@ You can also start from the reporter, or use a custom reason slug:
 Reports::from($user)->about($post)->for('copyright')->create();
 ```
 
+Or hand over a DTO in one call:
+
+```php
+use RoundlyConsulting\Reports\DataTransferObjects\CreateReportData;
+
+Reports::create(new CreateReportData(subject: $post, reason: Reason::Spam, reporter: $user));
+```
+
+### Without the facade
+
+The facade is sugar over `RoundlyConsulting\Reports\ReportsManager`. Inject the manager for
+the same API with dependency injection, or run an action directly:
+
+```php
+use RoundlyConsulting\Reports\Actions\ResolveReportAction;
+use RoundlyConsulting\Reports\DataTransferObjects\ResolveReportData;
+use RoundlyConsulting\Reports\ReportsManager;
+
+final class ReportPost
+{
+    public function __construct(private ReportsManager $reports) {}
+
+    public function __invoke(User $user, Post $post): Report
+    {
+        return $this->reports->report($post)->by($user)->for('spam')->create();
+    }
+}
+
+// The raw action:
+app(ResolveReportAction::class)->execute($report, new ResolveReportData(resolver: $admin, note: 'Removed.'));
+```
+
+| Facade / manager method | Action |
+|---|---|
+| `report($subject)` / `from($reporter)` → `PendingReport` (`->create()`), `create(CreateReportData)` | `CreateReportAction` |
+| `moderate($report)` → `PendingModeration` (`->open()`) | `OpenModerationAction` |
+| `resolve($report, ?$by, ?$note)` | `ResolveReportAction` |
+| `reject($report, ?$by, ?$note)` | `RejectReportAction` |
+| `changeStatus($report, Status)`, `review($report)`, `close($report)` | `ChangeReportStatusAction` |
+| `prune(?int $days = null, bool $force = false): int` | `PruneReportsAction` |
+| `reasons()`, `reasonLabel($slug)`, `defaultReason()`, `allowsReason($slug)` | — (reads the reason config) |
+
 ### Guest / anonymous reports
 
 ```php
@@ -175,6 +217,8 @@ Reports::report($post)
 ```
 
 ### Filing a report (trait)
+
+The trait methods go through the manager, so `Reports::fake()` records them too.
 
 ```php
 // Defaults to the configured default reason.
@@ -189,7 +233,14 @@ $user->report($post)->for(Reason::Spam)->because('Spammy.')->create();
 Reports are tagged with a reason slug validated against `config('reports.reasons')`. Filing
 a report with a disallowed slug throws `UnknownReportReasonException` (unless
 `allow_unknown_reasons` is `true`). Default reasons map to the `Reason` enum, which adopts
-the `enums-for-laravel` `Helpers` trait:
+the `enums-for-laravel` `Helpers` trait. Ask the facade for the allowed set:
+
+```php
+Reports::reasons();                 // ['spam' => 'Spam', 'abuse' => 'Abuse', …] — slug => label
+Reports::reasonLabel('spam');       // "Spam" (a custom slug labels as itself)
+Reports::defaultReason();           // "other"
+Reports::allowsReason('copyright'); // false unless configured or allow_unknown_reasons
+```
 
 ```php
 use RoundlyConsulting\Reports\Enums\Reason;
@@ -209,9 +260,14 @@ Every report carries a `Status` enum: `Pending`, `InReview`, `Resolved`, `Reject
 ```php
 use RoundlyConsulting\Reports\Enums\Status;
 
-$report->changeStatusTo(Status::InReview); // allowed
-$report->changeStatusTo(Status::InReview); // no-op when already in that status
+Reports::review($report);                     // → InReview
+Reports::close($report);                      // → Closed (from Resolved)
+Reports::changeStatus($report, Status::Pending);
+
+$report->changeStatusTo(Status::InReview);    // model shorthand, same path
 ```
+
+Staying on the current status is a no-op; every real move fires `ReportStatusChanged`.
 
 An illegal transition throws `InvalidStatusTransitionException` when
 `strict_transitions` is on. Resolve or reject through the facade to record metadata:
@@ -327,7 +383,20 @@ Event::listen(function (ReportCreated $event): void {
 });
 ```
 
+### Pruning
+
+```php
+Reports::prune(30);               // soft-delete terminal reports older than 30 days → int
+Reports::prune(30, force: true);  // delete permanently (also purges already-trashed rows)
+Reports::prune();                 // uses reports.prune_after_days
+```
+
+Without a window (no argument and no `prune_after_days`) `prune()` throws
+`MissingPruneWindowException`.
+
 ### Commands
+
+`reports:prune` is a thin wrapper over `Reports::prune()`:
 
 ```bash
 # Prune resolved/rejected/closed reports older than N days (soft-delete by default).
@@ -343,6 +412,35 @@ php artisan reports:prune
 php artisan reports:recount
 php artisan reports:recount --threshold=5
 ```
+
+### Testing with the fake
+
+`Reports::fake()` swaps a recording fake in behind the facade **and** the container, so the
+facade, an injected `ReportsManager`, the builders, `reports:prune`, `$report->changeStatusTo()`
+and the `GivesReports` trait all land on it. Mutating calls are recorded and nothing is
+written; the reason reads still answer for real.
+
+```php
+use RoundlyConsulting\Reports\Facades\Reports;
+
+$fake = Reports::fake();
+
+$user->report($post)->for('spam')->create();
+Reports::resolve($report, by: $admin, note: 'Removed.');
+
+$fake->assertReported($post, $user, 'spam');
+$fake->assertResolved($report, $admin, 'Removed.');
+$fake->assertNothingPruned();
+```
+
+| Assertion | Passes when |
+|---|---|
+| `assertReported($subject, ?$by = null, Reason\|string\|null $reason = null)` / `assertNothingReported()` | a report was filed about the subject (by `$by`, for `$reason`, when given) / none was |
+| `assertModerated($report)` / `assertNothingModerated()` | `moderate($report)->…->open()` ran / never ran |
+| `assertResolved($report, ?$by = null, ?$note = null)` / `assertNothingResolved()` | the report was resolved (by, with note, when given) / none was |
+| `assertRejected($report, ?$by = null, ?$note = null)` / `assertNothingRejected()` | same, for rejections |
+| `assertStatusChanged($report, ?Status $to = null)` / `assertNothingStatusChanged()` | `changeStatus()` / `review()` / `close()` / `changeStatusTo()` moved it (to `$to`) / nothing moved |
+| `assertPruned(?int $days = null, ?bool $force = null)` / `assertNothingPruned()` | `prune()` ran (with that window / flag) / never ran |
 
 ### Soft deletes
 
