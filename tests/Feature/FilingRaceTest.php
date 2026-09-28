@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schema;
 use RoundlyConsulting\Reports\Events\ReportThresholdReached;
 use RoundlyConsulting\Reports\Facades\Reports;
 use RoundlyConsulting\Reports\Models\Report;
@@ -92,3 +94,34 @@ it('waits for the subject row lock before looking for duplicates on postgres', f
 
     expect(Report::query()->count())->toBe(0);
 })->skip(fn (): bool => DriverMatrix::driver() !== 'pgsql', 'row locks need a real engine');
+
+it('locks a subject that lives on another connection in a transaction of its own', function (): void {
+    config()->set('database.connections.subjects', [
+        'driver' => 'sqlite',
+        'database' => ':memory:',
+        'prefix' => '',
+        'foreign_key_constraints' => true,
+    ]);
+    Schema::connection('subjects')->create('posts', function (Blueprint $table): void {
+        $table->id();
+    });
+
+    $post = (new PostTestModel)->setConnection('subjects');
+    $post->save();
+
+    $levels = [];
+    DB::connection('subjects')->listen(function (QueryExecuted $query) use (&$levels): void {
+        if (str_contains(strtolower($query->sql), '"posts"')) {
+            $levels[] = DB::connection('subjects')->transactionLevel();
+        }
+    });
+
+    $report = Reports::report($post)->by(UserTestModel::create())->create();
+
+    expect($report->exists)->toBeTrue()
+        ->and($report->reported_id)->toBe($post->getKey())
+        ->and($levels)->not->toBeEmpty()
+        ->and(min($levels))->toBeGreaterThan(0);
+
+    DB::purge('subjects');
+});
