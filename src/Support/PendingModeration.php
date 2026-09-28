@@ -31,8 +31,7 @@ final class PendingModeration
         $rule = config('reports.moderation.default_rule', 'unanimous');
         $this->rule = ApprovalRule::tryFrom(is_string($rule) ? $rule : 'unanimous') ?? ApprovalRule::Unanimous;
 
-        $quorum = config('reports.moderation.default_quorum');
-        $this->quorum = is_int($quorum) ? $quorum : null;
+        $this->quorum = ReportsConfig::defaultQuorum();
     }
 
     /**

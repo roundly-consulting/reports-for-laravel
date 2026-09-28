@@ -35,7 +35,7 @@ final class ReasonRegistry
 
     public function allowsUnknown(): bool
     {
-        return (bool) config('reports.allow_unknown_reasons', false);
+        return ReportsConfig::allowUnknownReasons();
     }
 
     public function default(): string

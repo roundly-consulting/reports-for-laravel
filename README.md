@@ -99,6 +99,13 @@ The `moderation` block seeds the `Reports::moderate()` builder. `default_rule` i
 `ApprovalRule` value (`unanimous`, `quorum`, `any`, `weighted`); `default_quorum` is the
 approval count used by the `quorum` rule (`null` = require every declared moderator).
 
+Values read from `.env` arrive as strings, and are read as such: the integer keys accept
+integer strings (`'5'`), the switches accept `'true'`/`'false'`, `'1'`/`'0'`, `'on'`/`'off'`
+and `'yes'`/`'no'`, and an empty value counts as unset. A `threshold` or `prune_after_days`
+that is not a whole number throws the toolkit's
+`RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException` rather than
+quietly switching the feature off (`php artisan about` shows it as `INVALID`).
+
 | Key | Type | Default | Purpose |
 |---|---|---|---|
 | `model` | `class-string` | `Report::class` | The Eloquent model used to store reports. Point at your own subclass to customise. |
@@ -107,11 +114,13 @@ approval count used by the `quorum` rule (`null` = require every declared modera
 | `default_reason` | `string` | `'other'` | The reason used when a report is filed without one. |
 | `reasons` | `list<string>` | enum values | The allowed reason slugs. Add your own custom slugs here. |
 | `allow_unknown_reasons` | `bool` | `false` | When `true`, any reason slug is accepted (no validation). |
-| `prevent_duplicates` | `bool` | `true` | Prevent the same reporter / guest from reporting the same subject twice. |
+| `prevent_duplicates` | `bool` | `true` | Prevent the same reporter / guest from reporting the same subject twice (filings against one subject are serialized, so a double-submit can't slip through). |
 | `duplicate_scope` | `'open'\|'any'` | `'open'` | `open` dedupes only against non-terminal reports; `any` against every report ever filed. |
 | `strict_transitions` | `bool` | `true` | When `true`, only declared status transitions are allowed; illegal moves throw. |
-| `threshold` | `int\|null` | `null` | When set, a `ReportThresholdReached` event fires once when a subject's open report count reaches this number. `null` disables it. |
-| `prune_after_days` | `int\|null` | `null` | Default age (days) for the `reports:prune` command when no `--days` is given. |
+| `threshold` | `int\|null` | `null` | When set, `ReportThresholdReached` fires when a new report brings a subject's open report count to exactly this number — once per crossing (see **Threshold auto-actions**). `null` or `0` disables it; anything but a whole number throws `InvalidConfigurationException` when a report is filed. |
+| `prune_after_days` | `int\|null` | `null` | Default age (days) for `Reports::prune()` / `reports:prune` when no window is given. `null` requires one; anything but a whole number throws `InvalidConfigurationException`. |
+| `moderation.default_rule` | `string` | `'unanimous'` | The `ApprovalRule` a moderation request uses unless `->rule()` is called. An unknown value falls back to `unanimous`. |
+| `moderation.default_quorum` | `int\|null` | `null` | The approval count of the `quorum` rule unless `->quorum()` is called. `null` (or an invalid value) requires every declared moderator. |
 
 The package works with zero published configuration — these defaults are merged in
 automatically.
@@ -374,9 +383,12 @@ The `Report` model also ships query scopes: `withStatus`, `withReason`, `pending
 
 ### Threshold auto-actions
 
-Set `config('reports.threshold')` to react when a subject crosses a reporting threshold. A
-`ReportThresholdReached` event fires once, the moment the open report count reaches the
-threshold:
+Set `config('reports.threshold')` to react when a subject crosses a reporting threshold.
+`ReportThresholdReached` fires when a new report brings the subject's open report count to
+exactly the threshold — once per crossing: further reports past it don't fire again, but
+once resolving or rejecting reports drops the count below the threshold, the report that
+climbs back to it fires again. (The count is taken when a report is filed; a reopened report
+raises it without firing.)
 
 ```php
 use Illuminate\Support\Facades\Event;
@@ -428,6 +440,8 @@ php artisan reports:prune --days=30 --force
 
 # When prune_after_days is configured, --days is optional.
 php artisan reports:prune
+
+# --days takes a whole number; anything else (abc, -5, 1.5) is refused and nothing is pruned.
 
 # List per-subject open report counts (optionally over a threshold).
 php artisan reports:recount

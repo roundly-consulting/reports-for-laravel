@@ -14,6 +14,23 @@ beforeEach(function (): void {
     config()->set('reports.threshold', 3);
 });
 
+it('fires again when the open count drops below the threshold and climbs back', function (): void {
+    Event::fake([ReportThresholdReached::class]);
+    $post = PostTestModel::create();
+
+    $reports = [];
+    foreach (range(1, 3) as $i) {
+        $reports[] = Reports::report($post)->by(UserTestModel::create())->for(Reason::Spam)->create();
+    }
+    Event::assertDispatchedTimes(ReportThresholdReached::class, 1);
+
+    // Settling one drops the open count to 2; the next filing crosses 3 again.
+    Reports::resolve($reports[0]);
+    Reports::report($post)->by(UserTestModel::create())->for(Reason::Spam)->create();
+
+    Event::assertDispatchedTimes(ReportThresholdReached::class, 2);
+});
+
 it('fires the threshold event once on crossing and not afterwards', function (): void {
     Event::fake([ReportThresholdReached::class]);
     $post = PostTestModel::create();

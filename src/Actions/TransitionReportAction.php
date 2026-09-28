@@ -11,6 +11,7 @@ use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportStatusChanged;
 use RoundlyConsulting\Reports\Exceptions\InvalidStatusTransitionException;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 /**
  * Moves a report to a status in one locked step — the one place a report's status and
@@ -49,7 +50,7 @@ final class TransitionReportAction
                 return null;
             }
 
-            if ($this->strictTransitions() && ! $from->canTransitionTo($to)) {
+            if (ReportsConfig::strictTransitions() && ! $from->canTransitionTo($to)) {
                 throw InvalidStatusTransitionException::for($report, $from, $to);
             }
 
@@ -117,10 +118,5 @@ final class TransitionReportAction
         $report->resolved_by_type = null;
         $report->resolution_note = null;
         $report->resolved_at = null;
-    }
-
-    private function strictTransitions(): bool
-    {
-        return (bool) config('reports.strict_transitions', true);
     }
 }

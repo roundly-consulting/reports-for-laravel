@@ -8,6 +8,7 @@ use Illuminate\Support\Carbon;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Exceptions\MissingPruneWindowException;
 use RoundlyConsulting\Reports\Support\ReportModel;
+use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 /**
  * Deletes terminal (resolved / rejected / closed) reports created before the cutoff.
@@ -23,7 +24,7 @@ final class PruneReportsAction
      */
     public function execute(?int $days = null, bool $force = false): int
     {
-        $days ??= $this->configuredDays();
+        $days ??= ReportsConfig::pruneAfterDays();
 
         if ($days === null) {
             throw MissingPruneWindowException::make();
@@ -36,13 +37,6 @@ final class PruneReportsAction
         return $force
             ? (int) $query->forceDelete()
             : (int) $query->delete();
-    }
-
-    private function configuredDays(): ?int
-    {
-        $configured = config('reports.prune_after_days');
-
-        return is_int($configured) ? $configured : null;
     }
 
     /**

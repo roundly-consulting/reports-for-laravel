@@ -13,6 +13,7 @@ use RoundlyConsulting\Reports\Exceptions\UnknownReportReasonException;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportModel;
+use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 /**
  * Files a report. The reason is validated, then — inside one transaction holding the
@@ -32,9 +33,11 @@ final class CreateReportAction
             throw UnknownReportReasonException::slug($data->reason, $this->reasons->all());
         }
 
+        // Read (and validated) before anything is written.
+        $threshold = ReportsConfig::threshold();
         $openCount = null;
 
-        $file = function () use ($data, &$openCount): Report {
+        $file = function () use ($data, $threshold, &$openCount): Report {
             $this->lockSubject($data->subject);
 
             $this->guardAgainstDuplicate($data);
@@ -53,7 +56,9 @@ final class CreateReportAction
 
             $report->save();
 
-            $openCount = $this->threshold() === null ? null : $this->openReportsCountFor($data);
+            // Fires once per crossing: resolving or rejecting reports lowers the count,
+            // and a later filing that climbs back to the threshold fires again.
+            $openCount = $threshold === null ? null : $this->openReportsCountFor($data);
 
             return $report;
         };
@@ -68,8 +73,12 @@ final class CreateReportAction
             ? $reports->transaction($file)
             : $subjects->transaction(static fn (): Report => $reports->transaction($file));
 
-        if (is_int($openCount)) {
-            $this->announceThreshold($data, $openCount);
+        if ($threshold !== null && $openCount === $threshold) {
+            event(new ReportThresholdReached(
+                subject: $data->subject,
+                count: $openCount,
+                threshold: $threshold,
+            ));
         }
 
         return $report;
@@ -96,7 +105,7 @@ final class CreateReportAction
 
     private function guardAgainstDuplicate(CreateReportData $data): void
     {
-        if (! (bool) config('reports.prevent_duplicates', true)) {
+        if (! ReportsConfig::preventDuplicates()) {
             return;
         }
 
@@ -127,36 +136,6 @@ final class CreateReportAction
         if ($existing instanceof Report) {
             throw DuplicateReportException::for($existing);
         }
-    }
-
-    /**
-     * Fire ReportThresholdReached when this filing brought the subject's open count to
-     * exactly the threshold — once per crossing: resolving or rejecting reports lowers
-     * the count, and a later filing that climbs back to the threshold fires again.
-     */
-    private function announceThreshold(CreateReportData $data, int $openCount): void
-    {
-        $threshold = $this->threshold();
-
-        if ($threshold === null || $openCount !== $threshold) {
-            return;
-        }
-
-        event(new ReportThresholdReached(
-            subject: $data->subject,
-            count: $openCount,
-            threshold: $threshold,
-        ));
-    }
-
-    /**
-     * The configured threshold, or null when it is disabled (null, zero or negative).
-     */
-    private function threshold(): ?int
-    {
-        $threshold = config('reports.threshold');
-
-        return is_int($threshold) && $threshold > 0 ? $threshold : null;
     }
 
     private function openReportsCountFor(CreateReportData $data): int

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Reports;
 
+use Closure;
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Approvals\Events\ApprovalRequestResolved;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Enums\KeyType;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 use RoundlyConsulting\Reports\Commands\PruneReportsCommand;
@@ -15,6 +17,7 @@ use RoundlyConsulting\Reports\Commands\RecountReportsCommand;
 use RoundlyConsulting\Reports\Listeners\SyncReportStatusFromApproval;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportModel;
+use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 final class ReportsServiceProvider extends PackageServiceProvider
 {
@@ -66,9 +69,6 @@ final class ReportsServiceProvider extends PackageServiceProvider
     {
         $reasons = app(ReasonRegistry::class);
         $table = config('reports.table');
-        $threshold = config('reports.threshold');
-        $pruneAfter = config('reports.prune_after_days');
-        $quorum = config('reports.moderation.default_quorum');
         $rule = config('reports.moderation.default_rule', 'unanimous');
 
         return [
@@ -82,20 +82,43 @@ final class ReportsServiceProvider extends PackageServiceProvider
             ),
             'Default reason' => $reasons->default() === 'other' ? 'DEFAULT' : 'CUSTOM',
             'Duplicate prevention' => $this->duplicatePrevention(),
-            'Strict transitions' => config('reports.strict_transitions', true) === false ? 'OFF' : 'ON',
-            'Threshold' => is_int($threshold) && $threshold > 0 ? $threshold.' open report(s)' : 'DISABLED',
-            'Pruning' => is_int($pruneAfter) ? $pruneAfter.' day(s)' : 'MANUAL',
+            'Strict transitions' => ReportsConfig::strictTransitions() ? 'ON' : 'OFF',
+            'Threshold' => $this->describe(static function (): string {
+                $threshold = ReportsConfig::threshold();
+
+                return $threshold === null ? 'DISABLED' : $threshold.' open report(s)';
+            }),
+            'Pruning' => $this->describe(static function (): string {
+                $days = ReportsConfig::pruneAfterDays();
+
+                return $days === null ? 'MANUAL' : $days.' day(s)';
+            }),
             'Moderation' => sprintf(
                 '%s rule, quorum %s',
                 is_string($rule) ? $rule : 'unanimous',
-                is_int($quorum) ? (string) $quorum : 'ALL MODERATORS',
+                (string) (ReportsConfig::defaultQuorum() ?? 'ALL MODERATORS'),
             ),
         ];
     }
 
+    /**
+     * A config line for `about`: a misconfigured value renders INVALID instead of
+     * taking the whole command down.
+     *
+     * @param  Closure(): string  $render
+     */
+    private function describe(Closure $render): string
+    {
+        try {
+            return $render();
+        } catch (InvalidConfigurationException) {
+            return 'INVALID';
+        }
+    }
+
     private function duplicatePrevention(): string
     {
-        if (config('reports.prevent_duplicates', true) === false) {
+        if (! ReportsConfig::preventDuplicates()) {
             return 'OFF';
         }
 

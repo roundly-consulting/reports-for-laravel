@@ -98,9 +98,10 @@ return [
     | Threshold Auto-Action
     |--------------------------------------------------------------------------
     |
-    | When set, a ReportThresholdReached event fires the moment a subject's
-    | open report count reaches this number (fired once on crossing). Set to
-    | null to disable threshold notifications entirely.
+    | When set, a ReportThresholdReached event fires when a new report brings
+    | a subject's open report count to exactly this number — once per crossing:
+    | it fires again only after the count has dropped below it and climbed back.
+    | Set to null (or 0) to disable threshold notifications entirely.
     |
     */
 

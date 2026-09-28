@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\Reports\Actions\PruneReportsAction;
 use RoundlyConsulting\Reports\Exceptions\MissingPruneWindowException;
 use RoundlyConsulting\Reports\Exceptions\ReportsException;
@@ -44,9 +45,15 @@ it('falls back to the configured window', function (): void {
 });
 
 it('throws a reports exception without a window', function (): void {
-    config()->set('reports.prune_after_days', 'ten');
+    config()->set('reports.prune_after_days', null);
 
     expect(fn () => $this->action->execute())
         ->toThrow(MissingPruneWindowException::class, 'reports.prune_after_days is not configured')
         ->and(MissingPruneWindowException::make())->toBeInstanceOf(ReportsException::class);
 });
+
+it('refuses a configured window that is not a whole number of days', function (): void {
+    config()->set('reports.prune_after_days', 'ten');
+
+    $this->action->execute();
+})->throws(InvalidConfigurationException::class, 'reports.prune_after_days');

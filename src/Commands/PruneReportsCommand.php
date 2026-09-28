@@ -19,13 +19,25 @@ final class PruneReportsCommand extends Command
     public function handle(ReportsManager $reports): int
     {
         $option = $this->option('days');
+        $option = is_int($option) ? (string) $option : $option;
         $force = (bool) $this->option('force');
 
+        $days = null;
+
+        if (is_string($option) && $option !== '') {
+            // A blunt (int) cast read "abc" as 0 — prune everything — and "-5" as a
+            // cutoff in the future.
+            if (preg_match('/^\d+$/', $option) !== 1) {
+                $this->components->error('--days must be a whole number of days (0 or more).');
+
+                return self::FAILURE;
+            }
+
+            $days = (int) $option;
+        }
+
         try {
-            $count = $reports->prune(
-                $option !== null && $option !== '' ? (int) $option : null,
-                $force,
-            );
+            $count = $reports->prune($days, $force);
         } catch (MissingPruneWindowException) {
             $this->components->error('No --days given and reports.prune_after_days is not configured.');
 
