@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Reports\Actions;
 
-use Illuminate\Support\Carbon;
 use RoundlyConsulting\Approvals\Exceptions\UnauthorizedApprovalException;
 use RoundlyConsulting\Approvals\Facades\Approvals;
 use RoundlyConsulting\Reports\DataTransferObjects\ResolveReportData;
@@ -19,11 +18,12 @@ use RoundlyConsulting\Reports\Models\Report;
  * one) may make it, its rule decides when the bar is met, and
  * SyncReportStatusFromApproval owns the final status; anyone else, including a call
  * without an actor, gets a ModeratorRequiredException. Otherwise the report resolves
- * immediately.
+ * immediately, stamping the resolver, the note and the time; resolving it again is a
+ * no-op that keeps the first decision.
  */
 final readonly class ResolveReportAction
 {
-    public function __construct(private ChangeReportStatusAction $changeStatus) {}
+    public function __construct(private TransitionReportAction $transition) {}
 
     public function execute(Report $report, ResolveReportData $data): Report
     {
@@ -31,15 +31,11 @@ final readonly class ResolveReportAction
             return $this->decideThroughModeration($report, $data);
         }
 
-        $report->resolved_by_id = $data->resolver?->getKey();
-        $report->resolved_by_type = $data->resolver?->getMorphClass();
-        $report->resolution_note = $data->note;
-        $report->resolved_at = Carbon::now();
-        $report->save();
-
-        $this->changeStatus->execute($report, Status::Resolved);
-
-        event(new ReportResolved(report: $report));
+        // Checked against the stored status and written in one locked step: a refused
+        // move writes nothing, and a report already resolved is left as it is.
+        if ($this->transition->execute($report, Status::Resolved, $data) instanceof Status) {
+            event(new ReportResolved(report: $report));
+        }
 
         return $report;
     }

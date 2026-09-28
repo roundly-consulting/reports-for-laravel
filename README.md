@@ -278,7 +278,12 @@ Reports::reject($report, by: $admin, note: 'Not a violation.');
 ```
 
 Both record the resolver, a timestamp, and the note, and fire `ReportResolved` /
-`ReportRejected`.
+`ReportRejected`. The move is checked against the stored status first, under a row lock, and
+the status and resolution are written together — so an illegal move throws and writes
+nothing, and resolving an already-resolved report (or rejecting a rejected one) is a no-op
+that keeps the first decision and fires no second event. Reopening a settled report (back to
+`Pending`, or `InReview`) clears its resolver, note and `resolved_at`; closing a resolved
+report keeps them.
 
 ### Moderation (multi-moderator sign-off)
 
