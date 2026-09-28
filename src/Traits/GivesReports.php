@@ -6,12 +6,11 @@ namespace RoundlyConsulting\Reports\Traits;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use RoundlyConsulting\Reports\Actions\CreateReportAction;
 use RoundlyConsulting\Reports\DataTransferObjects\CreateReportData;
 use RoundlyConsulting\Reports\Enums\Reason;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\ReportsManager;
 use RoundlyConsulting\Reports\Support\PendingReport;
-use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportModel;
 
 trait GivesReports
@@ -24,31 +23,28 @@ trait GivesReports
         return $this->morphMany($this->reportModel(), 'reporter');
     }
 
+    /**
+     * File a report about the model as this reporter (through the manager, so the
+     * fake records it).
+     */
     public function giveReportTo(Model $model, ?string $description = null, Reason|string|null $reason = null): Report
     {
-        /** @var ReasonRegistry $reasons */
-        $reasons = app(ReasonRegistry::class);
+        $reports = app(ReportsManager::class);
 
-        /** @var CreateReportAction $action */
-        $action = app(CreateReportAction::class);
-
-        return $action->execute(new CreateReportData(
+        return $reports->create(new CreateReportData(
             subject: $model,
-            reason: $reason ?? $reasons->default(),
+            reason: $reason ?? $reports->defaultReason(),
             reporter: $this,
             description: $description,
         ));
     }
 
+    /**
+     * Start a fluent report about the model, filed by this reporter.
+     */
     public function report(Model $model): PendingReport
     {
-        /** @var CreateReportAction $action */
-        $action = app(CreateReportAction::class);
-
-        /** @var ReasonRegistry $reasons */
-        $reasons = app(ReasonRegistry::class);
-
-        return (new PendingReport($action, $reasons))->about($model)->by($this);
+        return app(ReportsManager::class)->report($model)->by($this);
     }
 
     /**

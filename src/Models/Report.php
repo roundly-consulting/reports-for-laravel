@@ -17,8 +17,7 @@ use RoundlyConsulting\Approvals\Traits\RequiresApproval;
 use RoundlyConsulting\Reports\Database\Factories\ReportFactory;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportCreated;
-use RoundlyConsulting\Reports\Events\ReportStatusChanged;
-use RoundlyConsulting\Reports\Exceptions\InvalidStatusTransitionException;
+use RoundlyConsulting\Reports\ReportsManager;
 
 /**
  * @property int $id
@@ -80,27 +79,13 @@ class Report extends Model implements RequiresApprovalInterface
         ];
     }
 
-    public function changeStatusTo(Status $status): self
+    /**
+     * Move the report to a status — goes through the manager
+     * (`Reports::changeStatus()`), so the fake records it.
+     */
+    public function changeStatusTo(Status $status): static
     {
-        if ($this->status === $status) {
-            return $this;
-        }
-
-        if ($this->strictTransitions() && ! $this->status->canTransitionTo($status)) {
-            throw InvalidStatusTransitionException::for($this, $this->status, $status);
-        }
-
-        $previousStatus = $this->status;
-
-        $this->update([
-            'status' => $status,
-        ]);
-
-        event(new ReportStatusChanged(
-            report: $this,
-            statusBefore: $previousStatus,
-            statusNow: $this->status,
-        ));
+        app(ReportsManager::class)->changeStatus($this, $status);
 
         return $this;
     }
@@ -189,10 +174,5 @@ class Report extends Model implements RequiresApprovalInterface
     protected static function newFactory(): ReportFactory
     {
         return ReportFactory::new();
-    }
-
-    private function strictTransitions(): bool
-    {
-        return (bool) config('reports.strict_transitions', true);
     }
 }

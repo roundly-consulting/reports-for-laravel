@@ -19,8 +19,10 @@ use RoundlyConsulting\Reports\Models\Report;
  * rule decides when the request is rejected and SyncReportStatusFromApproval owns the
  * final status. Otherwise the report is rejected immediately (the original behaviour).
  */
-final class RejectReportAction
+final readonly class RejectReportAction
 {
+    public function __construct(private ChangeReportStatusAction $changeStatus) {}
+
     public function execute(Report $report, ResolveReportData $data): Report
     {
         $actor = $data->resolver;
@@ -43,7 +45,7 @@ final class RejectReportAction
         $report->resolved_at = Carbon::now();
         $report->save();
 
-        $report->changeStatusTo(Status::Rejected);
+        $this->changeStatus->execute($report, Status::Rejected);
 
         event(new ReportRejected(report: $report));
 

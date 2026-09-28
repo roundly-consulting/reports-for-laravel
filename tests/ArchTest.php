@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use RoundlyConsulting\Reports\Exceptions\ReportsException;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\ReportsManager;
 use RoundlyConsulting\Testing\Arch\ArchPresets;
 
 /**
@@ -14,14 +15,16 @@ ArchPresets::strictTypes('RoundlyConsulting\Reports');
 
 /**
  * The deliberate extension points are exempt: `Report` is what `reports.model` invites a
- * host to subclass (pinned by the preset below instead), and ReportsException is the base
- * every reports error extends so a host can catch them uniformly.
+ * host to subclass (pinned by the preset below instead), ReportsException is the base
+ * every reports error extends so a host can catch them uniformly, and ReportsManager is
+ * the facade root `ReportsFake` extends, so a constructor-injected manager receives the
+ * fake under `Reports::fake()`.
  */
-ArchPresets::finalByDefault('RoundlyConsulting\Reports')
-    ->ignoring([
-        Report::class,
-        ReportsException::class,
-    ]);
+ArchPresets::finalByDefault('RoundlyConsulting\Reports', [
+    Report::class,
+    ReportsException::class,
+    ReportsManager::class,
+]);
 
 /**
  * The counter-weight, and the fleet's 7×-shipped fatal — **reports #33 is one of the
@@ -76,3 +79,9 @@ ArchPresets::morphColumnsUseTheSeam(__DIR__.'/../database/migrations');
 ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../composer.json');
 
 ArchPresets::noDebuggingLeftovers();
+
+/**
+ * `Report::changeStatusTo()` and the GivesReports trait delegate to the manager, never to
+ * an action, so `Reports::fake()` sees every call.
+ */
+ArchPresets::modelsGoThroughTheFacade('RoundlyConsulting\Reports');

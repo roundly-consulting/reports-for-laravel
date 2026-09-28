@@ -7,13 +7,13 @@ namespace RoundlyConsulting\Reports\Support;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Approvals\Enums\ApprovalRule;
 use RoundlyConsulting\Approvals\Models\ApprovalRequest;
-use RoundlyConsulting\Reports\Exceptions\MissingModeratorsException;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\ReportsManager;
 
 /**
  * Fluent builder that opens an approvals request requiring N moderators to sign
  * off on a report before it resolves. Backed by the approvals engine's rules
- * (unanimous / quorum / any / weighted).
+ * (unanimous / quorum / any / weighted); `open()` goes through the manager.
  */
 final class PendingModeration
 {
@@ -24,8 +24,10 @@ final class PendingModeration
 
     private ?int $quorum;
 
-    public function __construct(private readonly Report $report)
-    {
+    public function __construct(
+        private readonly ReportsManager $manager,
+        private readonly Report $report,
+    ) {
         $rule = config('reports.moderation.default_rule', 'unanimous');
         $this->rule = ApprovalRule::tryFrom(is_string($rule) ? $rule : 'unanimous') ?? ApprovalRule::Unanimous;
 
@@ -64,10 +66,6 @@ final class PendingModeration
      */
     public function open(): ApprovalRequest
     {
-        if ($this->moderators === []) {
-            throw MissingModeratorsException::forReport($this->report);
-        }
-
-        return $this->report->requestApproval($this->moderators, $this->rule, $this->quorum);
+        return $this->manager->openModeration($this->report, $this->moderators, $this->rule, $this->quorum);
     }
 }

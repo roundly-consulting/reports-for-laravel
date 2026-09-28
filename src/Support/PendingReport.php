@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Reports\Support;
 
 use Illuminate\Database\Eloquent\Model;
-use RoundlyConsulting\Reports\Actions\CreateReportAction;
 use RoundlyConsulting\Reports\DataTransferObjects\CreateReportData;
 use RoundlyConsulting\Reports\Enums\Reason;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\ReportsManager;
 
+/**
+ * Fluent report builder returned by `Reports::report()` / `Reports::from()` and the
+ * GivesReports trait. `create()` goes through the manager, so host overrides and
+ * `Reports::fake()` see every report filed this way.
+ */
 final class PendingReport
 {
     private ?Model $reporter = null;
@@ -21,8 +26,7 @@ final class PendingReport
     private Reason|string|null $reason = null;
 
     public function __construct(
-        private readonly CreateReportAction $createReport,
-        private readonly ReasonRegistry $reasons,
+        private readonly ReportsManager $manager,
         private ?Model $subject = null,
     ) {}
 
@@ -74,11 +78,9 @@ final class PendingReport
             throw new \LogicException('A report requires a subject. Call Reports::report($subject) first.');
         }
 
-        $reason = $this->reason ?? $this->reasons->default();
-
-        return $this->createReport->execute(new CreateReportData(
+        return $this->manager->create(new CreateReportData(
             subject: $this->subject,
-            reason: $reason,
+            reason: $this->reason ?? $this->manager->defaultReason(),
             reporter: $this->reporter,
             description: $this->description,
             guestIdentifier: $this->guestIdentifier,

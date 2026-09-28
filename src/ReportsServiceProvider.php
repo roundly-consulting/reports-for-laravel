@@ -15,7 +15,6 @@ use RoundlyConsulting\Reports\Commands\RecountReportsCommand;
 use RoundlyConsulting\Reports\Listeners\SyncReportStatusFromApproval;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportModel;
-use RoundlyConsulting\Reports\Support\ReportsManager;
 
 final class ReportsServiceProvider extends PackageServiceProvider
 {

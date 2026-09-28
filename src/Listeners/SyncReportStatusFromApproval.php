@@ -8,6 +8,7 @@ use Illuminate\Support\Carbon;
 use RoundlyConsulting\Approvals\Enums\ApprovalStatus;
 use RoundlyConsulting\Approvals\Events\ApprovalRequestResolved;
 use RoundlyConsulting\Approvals\Models\ApprovalRequest;
+use RoundlyConsulting\Reports\Actions\ChangeReportStatusAction;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportRejected;
 use RoundlyConsulting\Reports\Events\ReportResolved;
@@ -19,8 +20,10 @@ use RoundlyConsulting\Reports\Models\Report;
  * move the report and re-emit the reports event surface — keeping that surface unchanged
  * regardless of how the moderation decision arrived. Idempotent and transition-guard aware.
  */
-final class SyncReportStatusFromApproval
+final readonly class SyncReportStatusFromApproval
 {
+    public function __construct(private ChangeReportStatusAction $changeStatus) {}
+
     public function handle(ApprovalRequestResolved $event): void
     {
         $approvalRequest = $event->request;
@@ -42,7 +45,7 @@ final class SyncReportStatusFromApproval
 
         $this->stampDecision($subject, $approvalRequest);
 
-        $subject->changeStatusTo($target);
+        $this->changeStatus->execute($subject, $target);
 
         if ($target === Status::Resolved) {
             event(new ReportResolved(report: $subject));

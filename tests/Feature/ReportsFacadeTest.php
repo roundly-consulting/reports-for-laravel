@@ -68,8 +68,19 @@ it('rejects a report through the facade', function (): void {
     expect($rejected->status)->toBe(Status::Rejected);
 });
 
-it('exposes the allowed reasons', function (): void {
-    expect(Reports::reasons())->toContain('spam', 'abuse');
+it('exposes the allowed reasons with their labels', function (): void {
+    expect(Reports::reasons())->toMatchArray(['spam' => 'Spam', 'abuse' => 'Abuse'])
+        ->and(Reports::reasonLabel('misinformation'))->toBe('Misinformation')
+        ->and(Reports::reasonLabel('my-custom-reason'))->toBe('my-custom-reason')
+        ->and(Reports::defaultReason())->toBe('other')
+        ->and(Reports::allowsReason('spam'))->toBeTrue()
+        ->and(Reports::allowsReason('nope'))->toBeFalse();
+});
+
+it('labels custom configured reasons with their slug', function (): void {
+    config()->set('reports.reasons', ['spam', 'off-topic']);
+
+    expect(Reports::reasons())->toBe(['spam' => 'Spam', 'off-topic' => 'off-topic']);
 });
 
 it('throws when creating without a subject', function (): void {

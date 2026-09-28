@@ -11,7 +11,7 @@ beforeEach(function (): void {
     $this->action = app(ChangeReportStatusAction::class);
 });
 
-it('delegates an allowed transition to the model', function (): void {
+it('moves the report through an allowed transition', function (): void {
     $report = Report::factory()->pending()->create();
 
     $this->action->execute($report, Status::InReview);

@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Reports\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Carbon;
-use RoundlyConsulting\Reports\Enums\Status;
-use RoundlyConsulting\Reports\Models\Report;
-use RoundlyConsulting\Reports\Support\ReportModel;
+use RoundlyConsulting\Reports\Exceptions\MissingPruneWindowException;
+use RoundlyConsulting\Reports\ReportsManager;
 
 final class PruneReportsCommand extends Command
 {
@@ -18,61 +16,25 @@ final class PruneReportsCommand extends Command
 
     protected $description = 'Prune old, resolved/rejected/closed reports';
 
-    public function handle(): int
+    public function handle(ReportsManager $reports): int
     {
-        $days = $this->resolveDays();
+        $option = $this->option('days');
+        $force = (bool) $this->option('force');
 
-        if ($days === null) {
+        try {
+            $count = $reports->prune(
+                $option !== null && $option !== '' ? (int) $option : null,
+                $force,
+            );
+        } catch (MissingPruneWindowException) {
             $this->components->error('No --days given and reports.prune_after_days is not configured.');
 
             return self::FAILURE;
         }
 
-        $cutoff = Carbon::now()->subDays($days);
-
-        $query = $this->newReport()->newQuery()
-            ->whereIn('status', $this->terminalStatuses())
-            ->where('created_at', '<', $cutoff);
-
-        $force = (bool) $this->option('force');
-
-        $count = $force
-            ? (int) $query->forceDelete()
-            : (int) $query->delete();
-
         $verb = $force ? 'permanently deleted' : 'soft-deleted';
         $this->components->info("Pruned {$count} report(s) ({$verb}).");
 
         return self::SUCCESS;
-    }
-
-    private function resolveDays(): ?int
-    {
-        $option = $this->option('days');
-
-        if ($option !== null && $option !== '') {
-            return (int) $option;
-        }
-
-        $configured = config('reports.prune_after_days');
-
-        return is_int($configured) ? $configured : null;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function terminalStatuses(): array
-    {
-        return [
-            Status::Resolved->value,
-            Status::Rejected->value,
-            Status::Closed->value,
-        ];
-    }
-
-    private function newReport(): Report
-    {
-        return ReportModel::new();
     }
 }

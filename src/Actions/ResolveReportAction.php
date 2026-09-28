@@ -19,8 +19,10 @@ use RoundlyConsulting\Reports\Models\Report;
  * rule decides when the bar is met and SyncReportStatusFromApproval owns the final
  * status. Otherwise the report resolves immediately (the original behaviour).
  */
-final class ResolveReportAction
+final readonly class ResolveReportAction
 {
+    public function __construct(private ChangeReportStatusAction $changeStatus) {}
+
     public function execute(Report $report, ResolveReportData $data): Report
     {
         $actor = $data->resolver;
@@ -43,7 +45,7 @@ final class ResolveReportAction
         $report->resolved_at = Carbon::now();
         $report->save();
 
-        $report->changeStatusTo(Status::Resolved);
+        $this->changeStatus->execute($report, Status::Resolved);
 
         event(new ReportResolved(report: $report));
 

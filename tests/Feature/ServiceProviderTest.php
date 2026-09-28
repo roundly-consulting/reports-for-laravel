@@ -6,9 +6,9 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Approvals\Events\ApprovalRequestResolved;
+use RoundlyConsulting\Reports\ReportsManager;
 use RoundlyConsulting\Reports\ReportsServiceProvider;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
-use RoundlyConsulting\Reports\Support\ReportsManager;
 
 it('merges the package config', function (): void {
     expect(config('reports.table'))->toBe('reports')
