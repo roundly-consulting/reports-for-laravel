@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Reports\Actions;
 
+use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Reports\DataTransferObjects\CreateReportData;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportThresholdReached;
@@ -13,6 +14,12 @@ use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportModel;
 
+/**
+ * Files a report. The reason is validated, then — inside one transaction holding the
+ * reported subject's row lock — duplicates are refused (`reports.prevent_duplicates` /
+ * `duplicate_scope`), the report is inserted and, with `reports.threshold` set, the
+ * subject's open reports are counted. ReportThresholdReached fires after the commit.
+ */
 final class CreateReportAction
 {
     public function __construct(
@@ -25,25 +32,66 @@ final class CreateReportAction
             throw UnknownReportReasonException::slug($data->reason, $this->reasons->all());
         }
 
-        $this->guardAgainstDuplicate($data);
+        $openCount = null;
 
-        /** @var Report $report */
-        $report = $this->newReport()->newInstance([
-            'reporter_id' => $data->reporter?->getKey(),
-            'reporter_type' => $data->reporter?->getMorphClass(),
-            'reported_id' => $data->subject->getKey(),
-            'reported_type' => $data->subject->getMorphClass(),
-            'reason' => $data->reason,
-            'description' => $data->description,
-            'guest_identifier' => $data->guestIdentifier,
-            'status' => Status::Pending,
-        ]);
+        $file = function () use ($data, &$openCount): Report {
+            $this->lockSubject($data->subject);
 
-        $report->save();
+            $this->guardAgainstDuplicate($data);
 
-        $this->checkThreshold($data);
+            /** @var Report $report */
+            $report = $this->newReport()->newInstance([
+                'reporter_id' => $data->reporter?->getKey(),
+                'reporter_type' => $data->reporter?->getMorphClass(),
+                'reported_id' => $data->subject->getKey(),
+                'reported_type' => $data->subject->getMorphClass(),
+                'reason' => $data->reason,
+                'description' => $data->description,
+                'guest_identifier' => $data->guestIdentifier,
+                'status' => Status::Pending,
+            ]);
+
+            $report->save();
+
+            $openCount = $this->threshold() === null ? null : $this->openReportsCountFor($data);
+
+            return $report;
+        };
+
+        $reports = $this->newReport()->getConnection();
+        $subjects = $data->subject->getConnection();
+
+        // One transaction holds the subject lock across the lookup, the insert and the
+        // count. A subject on another connection is locked in a transaction of its own
+        // around the reports one.
+        $report = $subjects === $reports
+            ? $reports->transaction($file)
+            : $subjects->transaction(static fn (): Report => $reports->transaction($file));
+
+        if (is_int($openCount)) {
+            $this->announceThreshold($data, $openCount);
+        }
 
         return $report;
+    }
+
+    /**
+     * Take the reported subject's row lock for the rest of the transaction. Filings
+     * against one subject therefore serialize: the next one's duplicate lookup and
+     * threshold count see this one's committed row, so a double-submit can't file twice
+     * and a crossing is counted exactly once. (SQLite has no row locks; it serializes
+     * writers instead.)
+     */
+    private function lockSubject(Model $subject): void
+    {
+        if (! $subject->exists) {
+            return;
+        }
+
+        $subject->newQueryWithoutScopes()
+            ->whereKey($subject->getKey())
+            ->lockForUpdate()
+            ->value($subject->getKeyName());
     }
 
     private function guardAgainstDuplicate(CreateReportData $data): void
@@ -81,24 +129,34 @@ final class CreateReportAction
         }
     }
 
-    private function checkThreshold(CreateReportData $data): void
+    /**
+     * Fire ReportThresholdReached when this filing brought the subject's open count to
+     * exactly the threshold — once per crossing: resolving or rejecting reports lowers
+     * the count, and a later filing that climbs back to the threshold fires again.
+     */
+    private function announceThreshold(CreateReportData $data, int $openCount): void
     {
-        $threshold = config('reports.threshold');
+        $threshold = $this->threshold();
 
-        if (! is_int($threshold) || $threshold <= 0) {
+        if ($threshold === null || $openCount !== $threshold) {
             return;
         }
 
-        $count = $this->openReportsCountFor($data);
+        event(new ReportThresholdReached(
+            subject: $data->subject,
+            count: $openCount,
+            threshold: $threshold,
+        ));
+    }
 
-        // Fire exactly once, the moment the open count reaches the threshold.
-        if ($count === $threshold) {
-            event(new ReportThresholdReached(
-                subject: $data->subject,
-                count: $count,
-                threshold: $threshold,
-            ));
-        }
+    /**
+     * The configured threshold, or null when it is disabled (null, zero or negative).
+     */
+    private function threshold(): ?int
+    {
+        $threshold = config('reports.threshold');
+
+        return is_int($threshold) && $threshold > 0 ? $threshold : null;
     }
 
     private function openReportsCountFor(CreateReportData $data): int
