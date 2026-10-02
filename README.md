@@ -332,6 +332,11 @@ Reports::resolve($report, by: $alice);            // 1 of 2 — report stays ope
 Reports::resolve($report, by: $bob, note: 'Spam'); // quorum reached → Resolved
 ```
 
+The named list is stored on the request, so `open()` refuses one it could never settle —
+nothing is opened: `MissingModeratorsException` for an empty list, and the approvals engine's
+`InvalidApprovalRequestException` for a moderator that isn't saved yet or a quorum above the
+moderator count (`quorum(4)` of three).
+
 When the rule's threshold is reached the report's status is synced automatically (the
 `SyncReportStatusFromApproval` listener), stamping the deciding moderator + reason and
 re-emitting `ReportResolved` / `ReportRejected` / `ReportStatusChanged` — so the event

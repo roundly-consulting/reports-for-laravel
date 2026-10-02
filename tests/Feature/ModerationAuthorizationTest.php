@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Approvals\Enums\ApprovalRule;
 use RoundlyConsulting\Approvals\Enums\ApprovalStatus;
+use RoundlyConsulting\Approvals\Exceptions\InvalidApprovalRequestException;
 use RoundlyConsulting\Approvals\Exceptions\UnauthorizedApprovalException;
 use RoundlyConsulting\Approvals\Facades\Approvals;
 use RoundlyConsulting\Approvals\Models\ApprovalRequest;
@@ -175,3 +176,24 @@ it('settles directly again once the moderation request is decided', function ():
 
     expect(Reports::resolve($this->report)->status)->toBe(Status::Resolved);
 });
+
+it('refuses to open a moderation the named moderators could never settle', function (Closure $open, string $message): void {
+    expect(fn () => $open($this))->toThrow(InvalidApprovalRequestException::class, $message)
+        ->and($this->report->isUnderModeration())->toBeFalse()
+        ->and(ApprovalRequest::query()->count())->toBe(0);
+})->with([
+    'a quorum above the moderator count' => [
+        fn (object $test): ApprovalRequest => Reports::moderate($test->report)
+            ->requiring([$test->alice, $test->bob])
+            ->rule(ApprovalRule::Quorum)
+            ->quorum(3)
+            ->open(),
+        'can never be met',
+    ],
+    'an unsaved moderator' => [
+        fn (object $test): ApprovalRequest => Reports::moderate($test->report)
+            ->requiring([$test->alice, new UserTestModel])
+            ->open(),
+        'must be saved',
+    ],
+]);
