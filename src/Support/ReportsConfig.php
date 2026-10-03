@@ -82,6 +82,6 @@ final class ReportsConfig
             return null;
         }
 
-        return Config::intBetween($key, $min, PHP_INT_MAX, $min);
+        return Config::integer($key, $min, min: $min);
     }
 }
