@@ -11,12 +11,9 @@ use RoundlyConsulting\Reports\Models\Report;
 /**
  * The single seam through which the package resolves the `reports.model` class.
  *
- * Wraps the toolkit's {@see ModelResolver} (which validates the configured value
- * really is an Eloquent model, throwing otherwise) and narrows it to the
- * package's own base class: the package calls `Report`'s own API — the status
- * lifecycle, the open/pending scopes, the approvals subject contract — so a real
- * Eloquent model that is not a `Report` cannot serve, and falls back to the
- * packaged model rather than failing at the first `changeStatusTo()`.
+ * Absent config resolves the packaged model; anything else must be that model or a subclass of
+ * it, or the toolkit's ModelResolver throws InvalidConfigurationException naming the key — a
+ * foreign class is never silently replaced.
  */
 final class ReportModel
 {
@@ -25,9 +22,7 @@ final class ReportModel
      */
     public static function class(): string
     {
-        $model = ModelResolver::for('reports.model', Report::class);
-
-        return is_a($model, Report::class, true) ? $model : Report::class;
+        return ModelResolver::for('reports.model', Report::class);
     }
 
     public static function new(): Report

@@ -22,10 +22,14 @@ it('resolves a host subclass', function (): void {
         ->and(ReportModel::query()->getModel())->toBeInstanceOf(CustomReport::class);
 });
 
-it('falls back to the packaged model for a model that is not a report', function (): void {
+it('refuses a foreign model instead of falling back to the packaged one', function (): void {
+    // The toolkit refuses any class that is not the packaged model or a subclass of it.
     config()->set('reports.model', UserTestModel::class);
 
-    expect(ReportModel::class())->toBe(Report::class);
+    expect(fn (): string => ReportModel::class())->toThrow(
+        InvalidConfigurationException::class,
+        'Configuration value [reports.model] must be a class-string of ['.Report::class.'], ['.UserTestModel::class.'] given.',
+    );
 });
 
 it('throws when the configured model is not a model at all', function (): void {
