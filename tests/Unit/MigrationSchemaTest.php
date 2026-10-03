@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RoundlyConsulting\PackageToolkit\Enums\DatabaseDriver;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Testing\Database\DriverMatrix;
 
@@ -163,17 +163,15 @@ it('renders each configured key type as a distinct real column type', function (
     'ulid' => ['ulid', 'character(26)'],
 ])->skip($pgsqlOnly, 'needs the postgres catalog to tell the key types apart');
 
-it('falls back to the bigint schema for an unrecognized key type', function (): void {
+it('refuses to migrate on an unrecognized key type instead of falling back to bigint', function (): void {
     config()->set('reports.key_type', 'nonsense');
     config()->set('reports.table', 'fallback_reports');
 
-    runReportsMigration();
-
-    // Silently falling back is the documented behaviour: a typo in a host's config must
-    // never leave the package unable to migrate.
-    expect(Schema::hasColumn('fallback_reports', 'reporter_id'))->toBeTrue()
-        ->and(DatabaseDriver::current()->isPgsql() ? pgsqlColumnType('fallback_reports', 'reporter_id') : 'bigint')
-        ->toBe('bigint');
+    // A typo in a host's config must stop the migration, never silently build bigint
+    // columns for a uuid/ulid-keyed host.
+    expect(function (): void {
+        runReportsMigration();
+    })->toThrow(InvalidConfigurationException::class, 'Configuration value [reports.key_type] must be one of [bigint, uuid, ulid] (case-insensitive), [nonsense] given.');
 
     Schema::dropIfExists('fallback_reports');
 });
