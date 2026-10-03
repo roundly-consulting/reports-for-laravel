@@ -20,8 +20,8 @@ use RoundlyConsulting\Reports\Tests\UserTestModel;
  * Every env value is a string. The numeric keys used to require a PHP int (`is_int`),
  * so `REPORTS_THRESHOLD=2` silently disabled the threshold and a string
  * `prune_after_days` was ignored; the switches used a `(bool)` cast, which reads the
- * string 'false' as true. They now coerce integer strings and boolean words; an empty
- * value is not a number and throws.
+ * string 'false' as true. They now coerce integer strings and boolean words. A blank
+ * value (a host's `KEY=`) is not set — exactly like an absent key; junk still throws.
  */
 afterEach(function (): void {
     Carbon::setTestNow();
@@ -52,7 +52,7 @@ it('treats a zero or absent threshold as disabled', function (mixed $value): voi
     fileReports(PostTestModel::create(), 2);
 
     Event::assertNotDispatched(ReportThresholdReached::class);
-})->with(['zero string' => '0', 'zero' => 0, 'null' => null]);
+})->with(['zero string' => '0', 'zero' => 0, 'null' => null, 'blank (strict config)' => '', 'whitespace (strict config)' => ' ']);
 
 it('refuses a threshold that is not an integer before writing anything', function (mixed $value): void {
     config()->set('reports.threshold', $value);
@@ -61,7 +61,7 @@ it('refuses a threshold that is not an integer before writing anything', functio
         ->toThrow(InvalidConfigurationException::class);
 
     expect(Report::query()->count())->toBe(0);
-})->with(['word' => 'two', 'decimal' => '1.5', 'negative' => '-1', 'empty string (strict config)' => '']);
+})->with(['word' => 'two', 'decimal' => '1.5', 'negative' => '-1']);
 
 it('prunes with an integer-string window', function (): void {
     Carbon::setTestNow('2026-09-28 20:00:00');
@@ -77,11 +77,20 @@ it('treats an absent prune window as unset', function (): void {
     Reports::prune();
 })->throws(MissingPruneWindowException::class);
 
-it('refuses an empty prune window instead of treating it as unset (strict config)', function (): void {
-    config()->set('reports.prune_after_days', '');
+it('treats a blank prune window as unset, never as a zero-day window (strict config)', function (string $blank): void {
+    Carbon::setTestNow('2026-09-28 20:00:00');
+    config()->set('reports.prune_after_days', $blank);
+    Report::factory()->closed()->create(['created_at' => Carbon::now()->subDays(20)]);
 
-    Reports::prune();
-})->throws(InvalidConfigurationException::class, "Configuration value [reports.prune_after_days] must be an integer, [''] given.");
+    // The shipped default is null (require an explicit --days), so blank must refuse to
+    // guess — a blank read as the reader's floor of 0 would prune every terminal report.
+    expect(fn () => Reports::prune())->toThrow(MissingPruneWindowException::class)
+        ->and(Report::query()->count())->toBe(1);
+
+    $this->artisan('reports:prune')->assertExitCode(1);
+
+    expect(Report::query()->count())->toBe(1);
+})->with(['empty' => [''], 'whitespace' => ['   ']]);
 
 it('refuses a prune window that is not an integer', function (): void {
     config()->set('reports.prune_after_days', 'thirty');

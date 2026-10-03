@@ -23,8 +23,8 @@ return [
     | Reports Table
     |--------------------------------------------------------------------------
     |
-    | The database table reports are stored in. A blank or non-string value
-    | throws an InvalidConfigurationException.
+    | The database table reports are stored in. A non-string value throws an
+    | InvalidConfigurationException; a blank one is not set, so "reports" applies.
     |
     */
 
@@ -54,8 +54,9 @@ return [
     | The allowed reason slugs a report can be filed under. Defaults mirror the
     | Reason enum; you may add your own custom slugs here. Labels are derived from
     | the slug via the enums Helpers trait (Reason::readable()). "reasons" must
-    | be a non-empty list of non-empty strings and "default_reason" a non-empty
-    | string; anything else throws an InvalidConfigurationException.
+    | be a non-empty list of non-empty strings and "default_reason" a string;
+    | anything else throws an InvalidConfigurationException. A blank value is
+    | not set, so the default applies.
     |
     */
 
@@ -117,7 +118,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | The default age (in days) used by the reports:prune command when no
-    | --days option is supplied. Set to null to require an explicit --days.
+    | --days option is supplied. Set to null (or leave blank) to require an
+    | explicit --days; a blank value never means a zero-day window.
     |
     */
 

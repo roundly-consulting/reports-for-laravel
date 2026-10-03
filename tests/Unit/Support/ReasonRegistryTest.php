@@ -54,18 +54,18 @@ it('returns the configured default reason', function (): void {
     expect($this->registry->default())->toBe('other');
 });
 
-it('uses the Other reason when the default is absent (strict config)', function (): void {
-    config()->set('reports.default_reason', null);
+it('uses the Other reason when the default is absent or blank (strict config)', function (?string $value): void {
+    config()->set('reports.default_reason', $value);
 
     expect($this->registry->default())->toBe('other');
-});
+})->with(['absent' => [null], 'blank' => [''], 'whitespace' => [' ']]);
 
-it('refuses a blank or non-string default reason (strict config)', function (mixed $value): void {
+it('refuses a non-string default reason (strict config)', function (mixed $value): void {
     config()->set('reports.default_reason', $value);
 
     expect(fn () => $this->registry->default())
         ->toThrow(InvalidConfigurationException::class, 'Configuration value [reports.default_reason] must be a non-empty string');
-})->with(['blank' => [''], 'an array' => [['spam']]]);
+})->with(['an int' => [5], 'an array' => [['spam']]]);
 
 it('labels known enum slugs and custom slugs', function (): void {
     expect($this->registry->label('abuse'))->toBe('Abuse')

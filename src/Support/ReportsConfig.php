@@ -12,10 +12,11 @@ use RoundlyConsulting\Reports\Enums\Reason;
 /**
  * Strict, typed reads of the scalar `reports.*` keys. Every env value is a string, so an
  * integer key accepts a canonical integer string (`'2'`) and a switch accepts the boolean
- * words `filter_var` knows (`'false'`, `'0'`, `'off'`, `'no'`, …). A default applies only
- * when the key is absent (null): anything else that isn't usable — `'two'`, `''`, a rule or
- * scope typo, a blank table name — throws the toolkit's InvalidConfigurationException
- * rather than quietly picking a side.
+ * words `filter_var` knows (`'false'`, `'0'`, `'off'`, `'no'`, …). A key that is not set —
+ * absent, null, or blank like a host's `KEY=` — takes its default, or for an optional key
+ * (threshold, prune window, quorum) none. Anything else that isn't usable — `'two'`, `'1.5'`,
+ * a rule or scope typo, a non-string table name — throws the toolkit's
+ * InvalidConfigurationException rather than quietly picking a side.
  *
  * @internal
  */
@@ -27,7 +28,7 @@ final class ReportsConfig
 
     /**
      * The open-report count that fires ReportThresholdReached; null when disabled
-     * (unset, empty or zero).
+     * (not set — absent, null or blank — or zero).
      *
      * @throws InvalidConfigurationException
      */
@@ -39,7 +40,9 @@ final class ReportsConfig
     }
 
     /**
-     * The default prune window in days; null when unset or empty.
+     * The default prune window in days; null when not set (absent, null or blank), so
+     * pruning without `--days` raises MissingPruneWindowException instead of guessing.
+     * Never `0` for a blank value: that would prune every terminal report.
      *
      * @throws InvalidConfigurationException
      */
@@ -49,7 +52,8 @@ final class ReportsConfig
     }
 
     /**
-     * The default approval count of the quorum rule; null (every moderator) when unset.
+     * The default approval count of the quorum rule; null (every moderator) when not set
+     * (absent, null or blank).
      *
      * @throws InvalidConfigurationException
      */
@@ -96,7 +100,7 @@ final class ReportsConfig
     public static function reasons(): array
     {
         $key = 'reports.reasons';
-        $reasons = config($key);
+        $reasons = self::unlessBlank(config($key));
 
         if ($reasons === null) {
             return array_map(static fn (Reason $reason): string => $reason->value, Reason::cases());
@@ -153,7 +157,7 @@ final class ReportsConfig
      */
     private static function optionalInt(string $key, int $min): ?int
     {
-        return config($key) === null ? null : Config::integer($key, $min, min: $min);
+        return self::unlessBlank(config($key)) === null ? null : Config::integer($key, $min, min: $min);
     }
 
     /**
@@ -161,17 +165,26 @@ final class ReportsConfig
      */
     private static function string(string $key, string $default): string
     {
-        $value = config($key);
+        $value = self::unlessBlank(config($key));
 
         if ($value === null) {
             return $default;
         }
 
-        if (! is_string($value) || trim($value) === '') {
+        if (! is_string($value)) {
             throw InvalidConfigurationException::notAString($key, $value);
         }
 
         return $value;
+    }
+
+    /**
+     * A raw config value, with a blank string (`''` or whitespace — a host's `KEY=`) read as
+     * null: not set, exactly like an absent key.
+     */
+    private static function unlessBlank(mixed $value): mixed
+    {
+        return is_string($value) && trim($value) === '' ? null : $value;
     }
 
     private static function describe(mixed $value): string
