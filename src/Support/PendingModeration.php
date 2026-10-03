@@ -28,8 +28,7 @@ final class PendingModeration
         private readonly ReportsManager $manager,
         private readonly Report $report,
     ) {
-        $rule = config('reports.moderation.default_rule', 'unanimous');
-        $this->rule = ApprovalRule::tryFrom(is_string($rule) ? $rule : 'unanimous') ?? ApprovalRule::Unanimous;
+        $this->rule = ReportsConfig::defaultRule();
 
         $this->quorum = ReportsConfig::defaultQuorum();
     }

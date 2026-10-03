@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Approvals\Enums\ApprovalRule;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\Reports\Exceptions\MissingModeratorsException;
 use RoundlyConsulting\Reports\Facades\Reports;
 use RoundlyConsulting\Reports\Models\Report;
@@ -29,9 +30,9 @@ it('seeds defaults from config', function (): void {
         ->and($request->quorum)->toBe(3);
 });
 
-it('falls back to unanimous and null quorum on invalid config', function (): void {
+it('uses unanimous and no quorum when the defaults are absent (strict config)', function (): void {
     config()->set('reports.moderation.default_rule', null);
-    config()->set('reports.moderation.default_quorum', 'not-an-int');
+    config()->set('reports.moderation.default_quorum', null);
 
     $report = Report::factory()->pending()->create();
 
@@ -41,14 +42,27 @@ it('falls back to unanimous and null quorum on invalid config', function (): voi
         ->and($request->quorum)->toBeNull();
 });
 
-it('ignores an unknown default rule string', function (): void {
+it('refuses a junk default quorum instead of requiring every moderator (strict config)', function (mixed $value, string $message): void {
+    config()->set('reports.moderation.default_quorum', $value);
+
+    $report = Report::factory()->pending()->create();
+
+    expect(fn () => Reports::moderate($report))->toThrow(InvalidConfigurationException::class, $message);
+})->with([
+    'junk' => ['not-an-int', 'Configuration value [reports.moderation.default_quorum] must be an integer, [not-an-int] given.'],
+    'blank' => ['', "Configuration value [reports.moderation.default_quorum] must be an integer, [''] given."],
+    'zero' => [0, 'Configuration value [reports.moderation.default_quorum] must be at least 1, [0] given.'],
+]);
+
+it('refuses an unknown default rule instead of using unanimous (strict config)', function (): void {
     config()->set('reports.moderation.default_rule', 'garbage');
 
     $report = Report::factory()->pending()->create();
 
-    $request = Reports::moderate($report)->requiring([UserTestModel::create()])->open();
-
-    expect($request->rule)->toBe(ApprovalRule::Unanimous);
+    expect(fn () => Reports::moderate($report))->toThrow(
+        InvalidConfigurationException::class,
+        'Configuration value [reports.moderation.default_rule] must be one of [unanimous, quorum, any, weighted], [garbage] given.',
+    );
 });
 
 it('throws when no moderators are declared', function (): void {

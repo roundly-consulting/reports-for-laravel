@@ -23,7 +23,8 @@ return [
     | Reports Table
     |--------------------------------------------------------------------------
     |
-    | The database table reports are stored in.
+    | The database table reports are stored in. A blank or non-string value
+    | throws an InvalidConfigurationException.
     |
     */
 
@@ -52,7 +53,9 @@ return [
     |
     | The allowed reason slugs a report can be filed under. Defaults mirror the
     | Reason enum; you may add your own custom slugs here. Labels are derived from
-    | the slug via the enums Helpers trait (Reason::readable()).
+    | the slug via the enums Helpers trait (Reason::readable()). "reasons" must
+    | be a non-empty list of non-empty strings and "default_reason" a non-empty
+    | string; anything else throws an InvalidConfigurationException.
     |
     */
 
@@ -72,7 +75,8 @@ return [
     | whether this considers only open (non-terminal) reports or any report
     | ever filed.
     |
-    | Supported scopes: "open", "any"
+    | Supported scopes: "open", "any" (any other value throws an
+    | InvalidConfigurationException)
     |
     */
 
@@ -129,7 +133,10 @@ return [
     |
     | "default_rule" is an ApprovalRule value: "unanimous", "quorum", "any" or
     | "weighted". "default_quorum" is the approval count for the "quorum" rule
-    | (null = require every declared moderator).
+    | (null = require every declared moderator). An unknown rule, or a quorum
+    | that isn't a whole number of at least 1, throws an
+    | InvalidConfigurationException rather than falling back to the strictest
+    | setting.
     |
     */
 

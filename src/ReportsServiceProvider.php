@@ -68,12 +68,10 @@ final class ReportsServiceProvider extends PackageServiceProvider
     private function aboutPayload(): array
     {
         $reasons = app(ReasonRegistry::class);
-        $table = config('reports.table');
-        $rule = config('reports.moderation.default_rule', 'unanimous');
 
         return [
             'Model' => class_basename(ReportModel::class()),
-            'Table' => is_string($table) ? $table : 'reports',
+            'Table' => $this->describe(ReportsConfig::table(...)),
             'Key type' => KeyType::fromConfig('reports.key_type')->value,
             'Reasons' => sprintf(
                 '%d allowed, unknown %s',
@@ -93,11 +91,11 @@ final class ReportsServiceProvider extends PackageServiceProvider
 
                 return $days === null ? 'MANUAL' : $days.' day(s)';
             }),
-            'Moderation' => sprintf(
+            'Moderation' => $this->describe(static fn (): string => sprintf(
                 '%s rule, quorum %s',
-                is_string($rule) ? $rule : 'unanimous',
+                ReportsConfig::defaultRule()->value,
                 (string) (ReportsConfig::defaultQuorum() ?? 'ALL MODERATORS'),
-            ),
+            )),
         ];
     }
 
@@ -122,8 +120,6 @@ final class ReportsServiceProvider extends PackageServiceProvider
             return 'OFF';
         }
 
-        $scope = config('reports.duplicate_scope');
-
-        return 'ON (scope '.($scope === 'any' ? 'any' : 'open').')';
+        return $this->describe(static fn (): string => 'ON (scope '.ReportsConfig::duplicateScope().')');
     }
 }

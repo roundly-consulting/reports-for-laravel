@@ -19,6 +19,7 @@ use RoundlyConsulting\Reports\Database\Factories\ReportFactory;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportCreated;
 use RoundlyConsulting\Reports\ReportsManager;
+use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 /**
  * @property int $id
@@ -64,9 +65,7 @@ class Report extends Model implements RequiresApprovalInterface
 
     public function getTable(): string
     {
-        $table = config('reports.table');
-
-        return is_string($table) ? $table : 'reports';
+        return ReportsConfig::table();
     }
 
     /**

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
 
 beforeEach(function (): void {
@@ -13,12 +14,23 @@ it('returns all configured reason slugs as a list', function (): void {
         ->toBe(['spam', 'abuse', 'harassment', 'inappropriate', 'misinformation', 'other']);
 });
 
-it('falls back to enum cases when reasons config is empty', function (): void {
-    config()->set('reports.reasons', []);
+it('uses the enum cases when the reasons are absent (strict config)', function (): void {
+    config()->set('reports.reasons', null);
 
     expect($this->registry->all())
         ->toBe(['spam', 'abuse', 'harassment', 'inappropriate', 'misinformation', 'other']);
 });
+
+it('refuses an empty or junk reason list instead of using the enum cases (strict config)', function (mixed $value): void {
+    config()->set('reports.reasons', $value);
+
+    expect(fn () => $this->registry->all())->toThrow(InvalidConfigurationException::class, 'reports.reasons');
+})->with([
+    'empty' => [[]],
+    'a string' => ['spam,abuse'],
+    'a blank slug' => [['spam', '']],
+    'a non-string slug' => [['spam', 7]],
+]);
 
 it('treats configured slugs as allowed', function (): void {
     expect($this->registry->isAllowed('spam'))->toBeTrue()
@@ -42,11 +54,18 @@ it('returns the configured default reason', function (): void {
     expect($this->registry->default())->toBe('other');
 });
 
-it('falls back to the Other reason when default is blank', function (): void {
-    config()->set('reports.default_reason', '');
+it('uses the Other reason when the default is absent (strict config)', function (): void {
+    config()->set('reports.default_reason', null);
 
     expect($this->registry->default())->toBe('other');
 });
+
+it('refuses a blank or non-string default reason (strict config)', function (mixed $value): void {
+    config()->set('reports.default_reason', $value);
+
+    expect(fn () => $this->registry->default())
+        ->toThrow(InvalidConfigurationException::class, 'Configuration value [reports.default_reason] must be a non-empty string');
+})->with(['blank' => [''], 'an array' => [['spam']]]);
 
 it('labels known enum slugs and custom slugs', function (): void {
     expect($this->registry->label('abuse'))->toBe('Abuse')

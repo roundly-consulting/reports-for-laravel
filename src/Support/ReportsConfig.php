@@ -4,21 +4,27 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Reports\Support;
 
+use RoundlyConsulting\Approvals\Enums\ApprovalRule;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Support\Config;
+use RoundlyConsulting\Reports\Enums\Reason;
 
 /**
- * Typed reads of the scalar `reports.*` keys, tolerant of env strings: every env value
- * is a string, so an integer key accepts an integer string (`'2'`) and a switch accepts
- * the boolean words `filter_var` knows (`'false'`, `'0'`, `'off'`, `'no'`, …). An empty
- * value counts as unset. `threshold` and `prune_after_days` holding anything else throw
- * the toolkit's InvalidConfigurationException rather than quietly switching the feature
- * off.
+ * Strict, typed reads of the scalar `reports.*` keys. Every env value is a string, so an
+ * integer key accepts a canonical integer string (`'2'`) and a switch accepts the boolean
+ * words `filter_var` knows (`'false'`, `'0'`, `'off'`, `'no'`, …). A default applies only
+ * when the key is absent (null): anything else that isn't usable — `'two'`, `''`, a rule or
+ * scope typo, a blank table name — throws the toolkit's InvalidConfigurationException
+ * rather than quietly picking a side.
  *
  * @internal
  */
 final class ReportsConfig
 {
+    public const string SCOPE_OPEN = 'open';
+
+    public const string SCOPE_ANY = 'any';
+
     /**
      * The open-report count that fires ReportThresholdReached; null when disabled
      * (unset, empty or zero).
@@ -43,17 +49,88 @@ final class ReportsConfig
     }
 
     /**
-     * The default approval count of the quorum rule; null (every moderator) when unset,
-     * empty — or invalid: like `default_rule`, a bad moderation default falls back to
-     * the strictest setting rather than failing the builder.
+     * The default approval count of the quorum rule; null (every moderator) when unset.
+     *
+     * @throws InvalidConfigurationException
      */
     public static function defaultQuorum(): ?int
     {
-        try {
-            return self::optionalInt('reports.moderation.default_quorum', min: 1);
-        } catch (InvalidConfigurationException) {
-            return null;
+        return self::optionalInt('reports.moderation.default_quorum', min: 1);
+    }
+
+    /**
+     * The default approval rule of a moderation request; `unanimous` when unset.
+     *
+     * @throws InvalidConfigurationException
+     */
+    public static function defaultRule(): ApprovalRule
+    {
+        return Config::enum('reports.moderation.default_rule', ApprovalRule::class, ApprovalRule::Unanimous);
+    }
+
+    /**
+     * `open` (dedupe against non-terminal reports) or `any` (every report ever filed).
+     *
+     * @throws InvalidConfigurationException
+     */
+    public static function duplicateScope(): string
+    {
+        return Config::oneOf('reports.duplicate_scope', [self::SCOPE_OPEN, self::SCOPE_ANY], self::SCOPE_OPEN);
+    }
+
+    /**
+     * @throws InvalidConfigurationException
+     */
+    public static function table(): string
+    {
+        return self::string('reports.table', 'reports');
+    }
+
+    /**
+     * The allowed reason slugs; the `Reason` enum values when unset.
+     *
+     * @return list<string>
+     *
+     * @throws InvalidConfigurationException
+     */
+    public static function reasons(): array
+    {
+        $key = 'reports.reasons';
+        $reasons = config($key);
+
+        if ($reasons === null) {
+            return array_map(static fn (Reason $reason): string => $reason->value, Reason::cases());
         }
+
+        if (! is_array($reasons) || $reasons === [] || ! array_is_list($reasons)) {
+            throw new InvalidConfigurationException(
+                "Configuration value [{$key}] must be a non-empty list of reason slugs, [".self::describe($reasons).'] given.',
+            );
+        }
+
+        $slugs = [];
+
+        foreach ($reasons as $slug) {
+            if (! is_string($slug) || trim($slug) === '') {
+                throw new InvalidConfigurationException(
+                    "Configuration value [{$key}] must be a non-empty list of reason slugs, [".self::describe($slug).'] given.',
+                );
+            }
+
+            $slugs[] = $slug;
+        }
+
+        return $slugs;
+    }
+
+    /**
+     * The reason used when a report is filed without one; `other` when unset.
+     *
+     * @throws InvalidConfigurationException
+     */
+    public static function defaultReason(): string
+    {
+        return self::string('reports.default_reason', Reason::Other->value);
     }
 
     public static function strictTransitions(): bool
@@ -76,12 +153,34 @@ final class ReportsConfig
      */
     private static function optionalInt(string $key, int $min): ?int
     {
+        return config($key) === null ? null : Config::integer($key, $min, min: $min);
+    }
+
+    /**
+     * @throws InvalidConfigurationException
+     */
+    private static function string(string $key, string $default): string
+    {
         $value = config($key);
 
-        if ($value === null || $value === '') {
-            return null;
+        if ($value === null) {
+            return $default;
         }
 
-        return Config::integer($key, $min, min: $min);
+        if (! is_string($value) || trim($value) === '') {
+            throw InvalidConfigurationException::notAString($key, $value);
+        }
+
+        return $value;
+    }
+
+    private static function describe(mixed $value): string
+    {
+        return match (true) {
+            $value === '' => "''",
+            is_string($value) => $value,
+            is_int($value), is_float($value), is_bool($value) => var_export($value, true),
+            default => get_debug_type($value),
+        };
     }
 }

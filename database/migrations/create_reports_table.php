@@ -7,13 +7,13 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use RoundlyConsulting\PackageToolkit\Enums\KeyType;
 use RoundlyConsulting\Reports\Enums\Status;
+use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        $table = config('reports.table');
-        $tableName = is_string($table) ? $table : 'reports';
+        $tableName = ReportsConfig::table();
 
         // Throws for an unrecognized value, so a typo in the host's config fails
         // the migration instead of quietly building bigint columns.

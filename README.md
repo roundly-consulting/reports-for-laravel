@@ -101,26 +101,29 @@ approval count used by the `quorum` rule (`null` = require every declared modera
 
 Values read from `.env` arrive as strings, and are read as such: the integer keys accept
 integer strings (`'5'`), the switches accept `'true'`/`'false'`, `'1'`/`'0'`, `'on'`/`'off'`
-and `'yes'`/`'no'` (anything else throws), and an empty integer counts as unset. A `threshold` or
-`prune_after_days` that is not a whole number throws the toolkit's
+and `'yes'`/`'no'` (anything else throws). A default applies only when a key is absent (unset or
+`null`); a value that is present but unusable throws the toolkit's
 `RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException` rather than
-quietly switching the feature off (`php artisan about` shows it as `INVALID`).
+quietly picking a side (`php artisan about` shows it as `INVALID`): a `threshold`,
+`prune_after_days` or `default_quorum` that is not a whole number (an empty string included), a
+`duplicate_scope` other than `open`/`any`, an unknown `default_rule`, a blank or non-string
+`table` / `default_reason`, or a `reasons` list that is empty or holds a non-string slug.
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
 | `model` | `class-string` | `Report::class` | The Eloquent model used to store reports. Point at your own subclass to customise. |
-| `table` | `string` | `'reports'` | The database table reports are stored in. |
+| `table` | `string` | `'reports'` | The database table reports are stored in (non-empty string). |
 | `key_type` | `'bigint'\|'uuid'\|'ulid'` | `'bigint'` (env `REPORTS_KEY_TYPE`) | Key type for the polymorphic reporter / reported / resolved_by columns. Use `uuid`/`ulid` for UUID/ULID-keyed models. Any other value throws `InvalidConfigurationException`. |
-| `default_reason` | `string` | `'other'` | The reason used when a report is filed without one. |
-| `reasons` | `list<string>` | enum values | The allowed reason slugs. Add your own custom slugs here. |
+| `default_reason` | `string` | `'other'` | The reason used when a report is filed without one (non-empty string). |
+| `reasons` | `list<string>` | enum values | The allowed reason slugs (a non-empty list of non-empty strings). Add your own custom slugs here. |
 | `allow_unknown_reasons` | `bool` | `false` | When `true`, any reason slug is accepted (no validation). |
 | `prevent_duplicates` | `bool` | `true` | Prevent the same reporter / guest from reporting the same subject twice (filings against one subject are serialized, so a double-submit can't slip through). |
-| `duplicate_scope` | `'open'\|'any'` | `'open'` | `open` dedupes only against non-terminal reports; `any` against every report ever filed. |
+| `duplicate_scope` | `'open'\|'any'` | `'open'` | `open` dedupes only against non-terminal reports; `any` against every report ever filed. Any other value throws. |
 | `strict_transitions` | `bool` | `true` | When `true`, only declared status transitions are allowed; illegal moves throw. |
-| `threshold` | `int\|null` | `null` | When set, `ReportThresholdReached` fires when a new report brings a subject's open report count to exactly this number — once per crossing (see **Threshold auto-actions**). `null` or `0` disables it; anything but a whole number throws `InvalidConfigurationException` when a report is filed. |
-| `prune_after_days` | `int\|null` | `null` | Default age (days) for `Reports::prune()` / `reports:prune` when no window is given. `null` requires one; anything but a whole number throws `InvalidConfigurationException`. |
-| `moderation.default_rule` | `string` | `'unanimous'` | The `ApprovalRule` a moderation request uses unless `->rule()` is called. An unknown value falls back to `unanimous`. |
-| `moderation.default_quorum` | `int\|null` | `null` | The approval count of the `quorum` rule unless `->quorum()` is called. `null` (or an invalid value) requires every declared moderator. |
+| `threshold` | `int\|null` | `null` | When set, `ReportThresholdReached` fires when a new report brings a subject's open report count to exactly this number — once per crossing (see **Threshold auto-actions**). `null` or `0` disables it; anything but a whole number (an empty string included) throws `InvalidConfigurationException` when a report is filed. |
+| `prune_after_days` | `int\|null` | `null` | Default age (days) for `Reports::prune()` / `reports:prune` when no window is given. `null` requires one; anything but a whole number (an empty string included) throws `InvalidConfigurationException`. |
+| `moderation.default_rule` | `string` | `'unanimous'` | The `ApprovalRule` a moderation request uses unless `->rule()` is called. An unknown value throws `InvalidConfigurationException` when `Reports::moderate()` is called. |
+| `moderation.default_quorum` | `int\|null` | `null` | The approval count (at least `1`) of the `quorum` rule unless `->quorum()` is called. `null` requires every declared moderator; any other non-integer throws `InvalidConfigurationException`. |
 
 The package works with zero published configuration — these defaults are merged in
 automatically.

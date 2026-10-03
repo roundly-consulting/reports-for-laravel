@@ -15,13 +15,7 @@ final class ReasonRegistry
      */
     public function all(): array
     {
-        $reasons = config('reports.reasons');
-
-        if (! is_array($reasons) || $reasons === []) {
-            return array_map(static fn (Reason $reason): string => $reason->value, Reason::cases());
-        }
-
-        return array_values(array_map(static fn (mixed $slug): string => (string) $slug, $reasons));
+        return ReportsConfig::reasons();
     }
 
     public function isAllowed(string $slug): bool
@@ -40,9 +34,7 @@ final class ReasonRegistry
 
     public function default(): string
     {
-        $default = config('reports.default_reason');
-
-        return is_string($default) && $default !== '' ? $default : Reason::Other->value;
+        return ReportsConfig::defaultReason();
     }
 
     /**

@@ -41,11 +41,9 @@ it('ships exactly the config keys it reads', function (): void {
 
             // Deliberately NO `excludeFromReverse` for the provider. The testing README's
             // own example excludes the service provider on the grounds that "a render is
-            // not a read" — but this provider's `aboutPayload()` calls `config('reports.…')`
-            // for real (table, threshold, prune_after_days, moderation.*,
-            // strict_transitions, prevent_duplicates, duplicate_scope), and for several of
-            // those it is the only reader in the package. Excluding it would discard
-            // readers and weaken the reverse direction for nothing.
+            // not a read" — but this provider's `aboutPayload()` renders through the same
+            // strict readers (Support\ReportsConfig) the package acts on. Excluding it
+            // would discard readers and weaken the reverse direction for nothing.
         ],
     );
 });

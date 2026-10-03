@@ -124,7 +124,7 @@ final class CreateReportAction
             return;
         }
 
-        if (config('reports.duplicate_scope') === 'open') {
+        if (ReportsConfig::duplicateScope() === ReportsConfig::SCOPE_OPEN) {
             $query->whereIn('status', array_map(
                 static fn (Status $status): string => $status->value,
                 Status::open(),
