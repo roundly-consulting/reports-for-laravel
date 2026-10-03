@@ -157,3 +157,16 @@ it('refuses a prune --days that is not a non-negative integer', function (string
 
     expect(Report::query()->count())->toBe(1);
 })->with(['word' => 'abc', 'negative' => '-5', 'decimal' => '1.5']);
+
+it('throws on a switch typo instead of reading it as the default (strict config)', function (string $key, Closure $read): void {
+    config()->set($key, 'disabled');
+
+    expect($read)->toThrow(
+        InvalidConfigurationException::class,
+        "Configuration value [{$key}] must be a boolean (true/false, 1/0, on/off or yes/no), [disabled] given.",
+    );
+})->with([
+    'prevent_duplicates' => ['reports.prevent_duplicates', fn () => Reports::report(PostTestModel::create())->by(UserTestModel::create())->create()],
+    'strict_transitions' => ['reports.strict_transitions', fn () => Reports::close(Reports::report(PostTestModel::create())->by(UserTestModel::create())->create())],
+    'allow_unknown_reasons' => ['reports.allow_unknown_reasons', fn (): bool => Reports::allowsReason('copyright')],
+]);
