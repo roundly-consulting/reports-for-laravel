@@ -15,8 +15,8 @@ return new class extends Migration
         $table = config('reports.table');
         $tableName = is_string($table) ? $table : 'reports';
 
-        // Silently falls back to bigint for an unrecognized value, so a typo in
-        // the host's config never leaves the package unable to migrate.
+        // Throws for an unrecognized value, so a typo in the host's config fails
+        // the migration instead of quietly building bigint columns.
         $keyType = KeyType::fromConfig('reports.key_type');
 
         Schema::create($tableName, function (Blueprint $blueprint) use ($keyType, $tableName): void {

@@ -36,8 +36,8 @@ return [
     |
     | The key type used for the polymorphic reporter / reported / resolved_by
     | columns. Use "uuid" or "ulid" when your reporter and reportable models use
-    | UUID/ULID primary keys, otherwise leave it as "bigint". Any unrecognized
-    | value falls back to "bigint".
+    | UUID/ULID primary keys, otherwise leave it as "bigint". Any other value
+    | throws an InvalidConfigurationException.
     |
     | Supported: "bigint", "uuid", "ulid"
     |

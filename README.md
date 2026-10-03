@@ -101,8 +101,8 @@ approval count used by the `quorum` rule (`null` = require every declared modera
 
 Values read from `.env` arrive as strings, and are read as such: the integer keys accept
 integer strings (`'5'`), the switches accept `'true'`/`'false'`, `'1'`/`'0'`, `'on'`/`'off'`
-and `'yes'`/`'no'`, and an empty value counts as unset. A `threshold` or `prune_after_days`
-that is not a whole number throws the toolkit's
+and `'yes'`/`'no'` (anything else throws), and an empty integer counts as unset. A `threshold` or
+`prune_after_days` that is not a whole number throws the toolkit's
 `RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException` rather than
 quietly switching the feature off (`php artisan about` shows it as `INVALID`).
 
@@ -110,7 +110,7 @@ quietly switching the feature off (`php artisan about` shows it as `INVALID`).
 |---|---|---|---|
 | `model` | `class-string` | `Report::class` | The Eloquent model used to store reports. Point at your own subclass to customise. |
 | `table` | `string` | `'reports'` | The database table reports are stored in. |
-| `key_type` | `'bigint'\|'uuid'\|'ulid'` | `'bigint'` (env `REPORTS_KEY_TYPE`) | Key type for the polymorphic reporter / reported / resolved_by columns. Use `uuid`/`ulid` for UUID/ULID-keyed models. Any unrecognized value silently falls back to `bigint`. |
+| `key_type` | `'bigint'\|'uuid'\|'ulid'` | `'bigint'` (env `REPORTS_KEY_TYPE`) | Key type for the polymorphic reporter / reported / resolved_by columns. Use `uuid`/`ulid` for UUID/ULID-keyed models. Any other value throws `InvalidConfigurationException`. |
 | `default_reason` | `string` | `'other'` | The reason used when a report is filed without one. |
 | `reasons` | `list<string>` | enum values | The allowed reason slugs. Add your own custom slugs here. |
 | `allow_unknown_reasons` | `bool` | `false` | When `true`, any reason slug is accepted (no validation). |
