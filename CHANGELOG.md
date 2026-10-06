@@ -35,6 +35,10 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
 - `Report::factory()` (and a subclass's `factory()`) now builds the model configured in
   `reports.model`. It always built the packaged `Report`, so a host model's casts and events never
   ran for seeded reports.
+- Filing a report against an unsaved subject, or by an unsaved reporter, now throws a
+  `LogicException` and writes nothing. It used to store a report with a NULL id that no relation
+  finds, and a second such report by the same user on another unsaved model of the class was
+  refused as a duplicate.
 
 ## 1.0.0 - 2026-10-03
 

@@ -12,15 +12,17 @@ use RoundlyConsulting\Reports\Exceptions\DuplicateReportException;
 use RoundlyConsulting\Reports\Exceptions\UnknownReportReasonException;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\Support\DuplicateReports;
+use RoundlyConsulting\Reports\Support\FilingGuard;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportModel;
 use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 /**
- * Files a report. The reason is validated, then — inside one transaction holding the
- * reported subject's row lock — duplicates are refused (`reports.prevent_duplicates` /
- * `duplicate_scope`), the report is inserted and, with `reports.threshold` set, the
- * subject's open reports are counted. ReportThresholdReached fires after the commit.
+ * Files a report. An unsaved subject or reporter is refused (LogicException) and the reason
+ * is validated, then — inside one transaction holding the reported subject's row lock —
+ * duplicates are refused (`reports.prevent_duplicates` / `duplicate_scope`), the report is
+ * inserted and, with `reports.threshold` set, the subject's open reports are counted.
+ * ReportThresholdReached fires after the commit.
  */
 final class CreateReportAction
 {
@@ -30,6 +32,8 @@ final class CreateReportAction
 
     public function execute(CreateReportData $data): Report
     {
+        FilingGuard::ensureSaved($data);
+
         if (! $this->reasons->isAllowed($data->reason)) {
             throw UnknownReportReasonException::slug($data->reason, $this->reasons->all());
         }
@@ -94,10 +98,6 @@ final class CreateReportAction
      */
     private function lockSubject(Model $subject): void
     {
-        if (! $subject->exists) {
-            return;
-        }
-
         $subject->newQueryWithoutScopes()
             ->whereKey($subject->getKey())
             ->lockForUpdate()

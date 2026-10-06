@@ -23,6 +23,7 @@ use RoundlyConsulting\Reports\Exceptions\UnknownReportReasonException;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\ReportsManager;
 use RoundlyConsulting\Reports\Support\DuplicateReports;
+use RoundlyConsulting\Reports\Support\FilingGuard;
 use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportModel;
 use RoundlyConsulting\Reports\Support\ReportsConfig;
@@ -36,11 +37,12 @@ use RoundlyConsulting\Reports\Support\ReportsConfig;
  * The reason reads (`reasons()`, `reasonLabel()`, …) still answer for real.
  *
  * Before recording, it refuses what the real manager refuses, with the same exception,
- * and records nothing: an unknown reason or an invalid `reports.threshold`, a duplicate
- * (of a stored report or of one the fake filed), moderation without moderators or of a
- * settled report or one already under moderation (stored, or opened by the fake), a prune
- * without a window, and a move the strict status graph forbids — checked against where
- * the fake last moved the report, else its own status. Moderation itself is not
+ * and records nothing: an unsaved subject or reporter, an unknown reason or an invalid
+ * `reports.threshold`, a duplicate (of a stored report or of one the fake filed),
+ * moderation without moderators or of a settled report or one already under moderation
+ * (stored, or opened by the fake), a prune without a window, and a move the strict status
+ * graph forbids — checked against where the fake last moved the report, else its own
+ * status. Moderation itself is not
  * simulated: approvals' request checks (an unsaved moderator, an unreachable quorum) and
  * the moderator-only settling of a report under moderation do not run.
  */
@@ -77,6 +79,8 @@ final class ReportsFake extends ReportsManager
 
     public function create(CreateReportData $data): Report
     {
+        FilingGuard::ensureSaved($data);
+
         $reasons = $this->container->make(ReasonRegistry::class);
 
         if (! $reasons->isAllowed($data->reason)) {

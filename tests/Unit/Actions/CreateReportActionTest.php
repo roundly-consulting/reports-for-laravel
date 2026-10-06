@@ -130,3 +130,26 @@ it('never fires the threshold event when threshold is null', function (): void {
 
     Event::assertNotDispatched(ReportThresholdReached::class);
 });
+
+it('refuses an unsaved subject without writing a row', function (): void {
+    $keyless = new PostTestModel;
+    $keyless->exists = true;
+
+    // An unsaved subject used to file a report with reported_id NULL — an orphan no subject
+    // finds — and the next one on another unsaved model of the class was a "duplicate".
+    expect(fn () => $this->action->execute(new CreateReportData(subject: new PostTestModel, reason: 'spam', reporter: $this->user)))
+        ->toThrow(LogicException::class, 'A report requires a saved subject.')
+        ->and(fn () => $this->action->execute(new CreateReportData(subject: new PostTestModel, reason: 'spam', reporter: $this->user)))
+        ->toThrow(LogicException::class, 'A report requires a saved subject.')
+        ->and(fn () => $this->action->execute(new CreateReportData(subject: $keyless, reason: 'spam')))
+        ->toThrow(LogicException::class, 'A report requires a saved subject.');
+
+    expect(Report::query()->count())->toBe(0);
+});
+
+it('refuses an unsaved reporter without writing a row', function (): void {
+    expect(fn () => $this->action->execute(new CreateReportData(subject: $this->post, reason: 'spam', reporter: new UserTestModel)))
+        ->toThrow(LogicException::class, 'A report requires a saved reporter.');
+
+    expect(Report::query()->count())->toBe(0);
+});

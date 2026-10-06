@@ -245,16 +245,3 @@ it('never matches a different unsaved report or actor', function (): void {
         ->and(fn () => $fake->assertStatusChanged($b))->toThrow(AssertionFailedError::class)
         ->and(fn () => $fake->assertStatusChanged($b, Status::InReview))->toThrow(AssertionFailedError::class);
 });
-
-it('never matches a different unsaved subject or reporter in assertReported', function (): void {
-    $fake = Reports::fake();
-    $subject = new PostTestModel;
-    $reporter = new UserTestModel;
-
-    Reports::report($subject)->by($reporter)->create();
-
-    $fake->assertReported($subject, $reporter);
-
-    expect(fn () => $fake->assertReported(new PostTestModel))->toThrow(AssertionFailedError::class)
-        ->and(fn () => $fake->assertReported($subject, new UserTestModel))->toThrow(AssertionFailedError::class);
-});

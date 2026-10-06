@@ -264,3 +264,17 @@ it('refuses a second moderation request while one is pending', function (bool $f
         expect(fn () => $reports->assertModerated($opened))->toThrow(AssertionFailedError::class);
     }
 })->with('managers');
+
+it('refuses an unsaved subject or reporter', function (bool $fake): void {
+    $reports = parityFake($fake);
+
+    expect(fn () => Reports::report(new PostTestModel)->by($this->user)->create())
+        ->toThrow(LogicException::class, 'A report requires a saved subject.')
+        ->and(fn () => $this->user->giveReportTo(new PostTestModel))
+        ->toThrow(LogicException::class, 'A report requires a saved subject.')
+        ->and(fn () => Reports::report($this->post)->by(new UserTestModel)->create())
+        ->toThrow(LogicException::class, 'A report requires a saved reporter.');
+
+    $reports?->assertNothingReported();
+    expect(Report::query()->count())->toBe(0);
+})->with('managers');
