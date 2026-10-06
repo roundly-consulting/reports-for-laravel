@@ -6,6 +6,8 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
 
 ## Unreleased
 
+## 1.1.0 - 2026-10-06
+
 ### Added
 
 - `reports.primary_key_type` (env `REPORTS_PRIMARY_KEY_TYPE`): `bigint` (the default), `uuid` or
@@ -19,6 +21,8 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
 
 - Requires `roundly-consulting/approvals-for-laravel` `^1.0.1`: UUID moderation on PostgreSQL
   needs its `0007` migration.
+- Maintenance: `composer.json` `homepage` and `support.docs` point at the documentation website.
+- Documentation: the README hero image uses an absolute URL, so it renders on Packagist.
 
 ### Fixed
 
