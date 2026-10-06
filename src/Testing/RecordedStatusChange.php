@@ -19,6 +19,6 @@ final readonly class RecordedStatusChange
 
     public function matches(Report $report, ?Status $to): bool
     {
-        return $this->report->is($report) && ($to === null || $this->status === $to);
+        return SameModel::is($this->report, $report) && ($to === null || $this->status === $to);
     }
 }

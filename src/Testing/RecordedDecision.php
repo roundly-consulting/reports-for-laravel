@@ -20,8 +20,8 @@ final readonly class RecordedDecision
 
     public function matches(Report $report, ?Model $by, ?string $note): bool
     {
-        return $this->report->is($report)
-            && ($by === null || ($this->by !== null && $this->by->is($by)))
+        return SameModel::is($this->report, $report)
+            && ($by === null || ($this->by !== null && SameModel::is($this->by, $by)))
             && ($note === null || $this->note === $note);
     }
 }

@@ -10,6 +10,9 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
 
 - A model can now use both `GivesReports` and `HasReports` (users reporting users). Together they
   were a fatal trait collision.
+- `Reports::fake()` assertions (`assertReported`, `assertModerated`, `assertResolved`,
+  `assertRejected`, `assertStatusChanged`) no longer pass for a different unsaved report or model.
+  The fake's reports are unsaved, and any two of them used to match.
 
 ## 1.0.0 - 2026-10-03
 

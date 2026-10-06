@@ -212,3 +212,45 @@ it('still answers the reason reads for real', function (): void {
         ->and(Reports::defaultReason())->toBe('other')
         ->and(Reports::allowsReason('spam'))->toBeTrue();
 });
+
+it('never matches a different unsaved report or actor', function (): void {
+    $fake = Reports::fake();
+
+    // The fake files unsaved reports: every key is null, so Model::is() matched any two.
+    [$a, $b, $c, $d, $e] = array_map(
+        static fn (): Report => Reports::report(PostTestModel::create())->create(),
+        range(1, 5),
+    );
+    $moderator = new UserTestModel;
+
+    Reports::resolve($a, $moderator);
+    Reports::reject($c);
+    Reports::moderate($d)->requiring([$this->user])->open();
+    Reports::review($e);
+
+    $fake->assertResolved($a);
+    $fake->assertResolved($a, $moderator);
+    $fake->assertRejected($c);
+    $fake->assertModerated($d);
+    $fake->assertStatusChanged($e, Status::InReview);
+
+    expect(fn () => $fake->assertResolved($b))->toThrow(AssertionFailedError::class)
+        ->and(fn () => $fake->assertResolved($a, new UserTestModel))->toThrow(AssertionFailedError::class)
+        ->and(fn () => $fake->assertRejected($b))->toThrow(AssertionFailedError::class)
+        ->and(fn () => $fake->assertModerated($b))->toThrow(AssertionFailedError::class)
+        ->and(fn () => $fake->assertStatusChanged($b))->toThrow(AssertionFailedError::class)
+        ->and(fn () => $fake->assertStatusChanged($b, Status::InReview))->toThrow(AssertionFailedError::class);
+});
+
+it('never matches a different unsaved subject or reporter in assertReported', function (): void {
+    $fake = Reports::fake();
+    $subject = new PostTestModel;
+    $reporter = new UserTestModel;
+
+    Reports::report($subject)->by($reporter)->create();
+
+    $fake->assertReported($subject, $reporter);
+
+    expect(fn () => $fake->assertReported(new PostTestModel))->toThrow(AssertionFailedError::class)
+        ->and(fn () => $fake->assertReported($subject, new UserTestModel))->toThrow(AssertionFailedError::class);
+});

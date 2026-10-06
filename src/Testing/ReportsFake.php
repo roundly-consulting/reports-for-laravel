@@ -136,8 +136,8 @@ final class ReportsFake extends ReportsManager
 
         $matching = array_filter(
             $this->reported,
-            static fn (CreateReportData $data): bool => $data->subject->is($subject)
-                && ($by === null || ($data->reporter !== null && $data->reporter->is($by)))
+            static fn (CreateReportData $data): bool => SameModel::is($data->subject, $subject)
+                && ($by === null || ($data->reporter !== null && SameModel::is($data->reporter, $by)))
                 && ($slug === null || $data->reason === $slug),
         );
 
@@ -151,7 +151,7 @@ final class ReportsFake extends ReportsManager
 
     public function assertModerated(Report $report): void
     {
-        $matching = array_filter($this->moderated, static fn (Report $recorded): bool => $recorded->is($report));
+        $matching = array_filter($this->moderated, static fn (Report $recorded): bool => SameModel::is($recorded, $report));
 
         PHPUnit::assertNotEmpty($matching, 'Expected moderation to be opened for the report.');
     }
