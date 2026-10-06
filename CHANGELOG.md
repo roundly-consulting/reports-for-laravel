@@ -13,6 +13,11 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
 - `Reports::fake()` assertions (`assertReported`, `assertModerated`, `assertResolved`,
   `assertRejected`, `assertStatusChanged`) no longer pass for a different unsaved report or model.
   The fake's reports are unsaved, and any two of them used to match.
+- `Reports::fake()` now refuses what the real manager refuses, with the same exception, and records
+  nothing: an unknown reason, a duplicate report, moderation without moderators, a prune without a
+  window (so `reports:prune` fails under the fake too), and a status move `strict_transitions`
+  forbids. It used to record all of these, so a test could pass over a call that fails in
+  production.
 
 ## 1.0.0 - 2026-10-03
 

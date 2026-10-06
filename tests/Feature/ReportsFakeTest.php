@@ -32,19 +32,21 @@ it('is a manager subtype installed behind the facade and the container', functio
 it('records reports from the builders, the dto, the trait and an injected manager without writing', function (): void {
     $fake = Reports::fake();
     $other = PostTestModel::create();
+    $third = PostTestModel::create();
+    $member = UserTestModel::create();
 
     $built = Reports::report($this->post)->by($this->user)->for(Reason::Spam)->create();
     Reports::create(new CreateReportData(subject: $other, reason: 'abuse'));
     $this->user->giveReportTo($other, 'Rude.', Reason::Harassment);
-    $this->user->report($this->post)->for('misinformation')->create();
-    app(ReportsManager::class)->from($this->user)->about($other)->create();
+    $member->report($this->post)->for('misinformation')->create();
+    app(ReportsManager::class)->from($this->user)->about($third)->create();
 
     $fake->assertReported($this->post);
     $fake->assertReported($this->post, $this->user, Reason::Spam);
-    $fake->assertReported($this->post, reason: 'misinformation');
+    $fake->assertReported($this->post, $member, 'misinformation');
     $fake->assertReported($other, reason: 'abuse');
     $fake->assertReported($other, $this->user, Reason::Harassment);
-    $fake->assertReported($other, $this->user, 'other');
+    $fake->assertReported($third, $this->user, 'other');
 
     expect($built->exists)->toBeFalse()
         ->and($built->status)->toBe(Status::Pending)
@@ -86,20 +88,21 @@ it('fails assertReported by a reporter for a guest report', function (): void {
 it('records resolve and reject with actor and note', function (): void {
     $fake = Reports::fake();
     $report = Report::factory()->pending()->create();
+    $rejected = Report::factory()->pending()->create();
 
     Reports::resolve($report, $this->user, 'Handled.');
-    Reports::reject($report, note: 'Not a violation.');
+    Reports::reject($rejected, note: 'Not a violation.');
 
     $fake->assertResolved($report);
     $fake->assertResolved($report, $this->user, 'Handled.');
-    $fake->assertRejected($report, note: 'Not a violation.');
+    $fake->assertRejected($rejected, note: 'Not a violation.');
 
     expect($report->fresh()?->status)->toBe(Status::Pending)
         ->and(fn () => $fake->assertResolved($report, UserTestModel::create()))
         ->toThrow(AssertionFailedError::class, 'by the given actor')
         ->and(fn () => $fake->assertResolved($report, note: 'Other.'))
         ->toThrow(AssertionFailedError::class, 'with note [Other.]')
-        ->and(fn () => $fake->assertRejected($report, $this->user))
+        ->and(fn () => $fake->assertRejected($rejected, $this->user))
         ->toThrow(AssertionFailedError::class)
         ->and(fn () => $fake->assertRejected(Report::factory()->pending()->create()))
         ->toThrow(AssertionFailedError::class, 'Expected the report to be rejected.')
@@ -125,14 +128,14 @@ it('records status changes from the facade, review, close and the model method',
     $other = Report::factory()->pending()->create();
 
     Reports::review($report);
+    Reports::changeStatus($report, Status::Resolved);
     Reports::close($report);
-    Reports::changeStatus($report, Status::Rejected);
     $returned = $other->changeStatusTo(Status::Resolved);
 
     $fake->assertStatusChanged($report);
     $fake->assertStatusChanged($report, Status::InReview);
+    $fake->assertStatusChanged($report, Status::Resolved);
     $fake->assertStatusChanged($report, Status::Closed);
-    $fake->assertStatusChanged($report, Status::Rejected);
     $fake->assertStatusChanged($other, Status::Resolved);
 
     expect($returned)->toBe($other)
@@ -179,12 +182,13 @@ it('records prunes from the facade and the command', function (): void {
     $fake->assertNothingPruned();
 
     expect(Reports::prune(30))->toBe(0);
-    $this->artisan('reports:prune', ['--force' => true])->assertSuccessful();
+    $this->artisan('reports:prune', ['--days' => 60, '--force' => true])->assertSuccessful();
 
     $fake->assertPruned();
     $fake->assertPruned(30);
     $fake->assertPruned(30, force: false);
     $fake->assertPruned(force: true);
+    $fake->assertPruned(60, force: true);
 
     expect(Report::query()->find($old->getKey()))->not->toBeNull()
         ->and(fn () => $fake->assertPruned(7))

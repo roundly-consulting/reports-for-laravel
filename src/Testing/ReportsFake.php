@@ -14,9 +14,17 @@ use RoundlyConsulting\Approvals\Support\ApprovalRequestModelResolver;
 use RoundlyConsulting\Reports\DataTransferObjects\CreateReportData;
 use RoundlyConsulting\Reports\Enums\Reason;
 use RoundlyConsulting\Reports\Enums\Status;
+use RoundlyConsulting\Reports\Exceptions\DuplicateReportException;
+use RoundlyConsulting\Reports\Exceptions\InvalidStatusTransitionException;
+use RoundlyConsulting\Reports\Exceptions\MissingModeratorsException;
+use RoundlyConsulting\Reports\Exceptions\MissingPruneWindowException;
+use RoundlyConsulting\Reports\Exceptions\UnknownReportReasonException;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\ReportsManager;
+use RoundlyConsulting\Reports\Support\DuplicateReports;
+use RoundlyConsulting\Reports\Support\ReasonRegistry;
 use RoundlyConsulting\Reports\Support\ReportModel;
+use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 /**
  * Test double for the reports manager, installed by `Reports::fake()`. It extends the
@@ -25,11 +33,25 @@ use RoundlyConsulting\Reports\Support\ReportModel;
  * manager, the report/moderation builders, the prune command, `Report::changeStatusTo()`
  * or the GivesReports trait. Nothing is written: `create()` returns an unsaved report.
  * The reason reads (`reasons()`, `reasonLabel()`, …) still answer for real.
+ *
+ * Before recording, it refuses what the real manager refuses, with the same exception,
+ * and records nothing: an unknown reason or an invalid `reports.threshold`, a duplicate
+ * (of a stored report or of one the fake filed), moderation without moderators, a prune
+ * without a window, and a move the strict status graph forbids — checked against where
+ * the fake last moved the report, else its own status. Moderation itself is not
+ * simulated: approvals' request checks (an unsaved moderator, an unreachable quorum) and
+ * the moderator-only settling of a report under moderation do not run.
  */
 final class ReportsFake extends ReportsManager
 {
     /** @var list<CreateReportData> */
     private array $reported = [];
+
+    /** @var list<Report> the reports `create()` returned, in the order of the filings */
+    private array $filed = [];
+
+    /** @var list<RecordedStatusChange> every move the fake simulated, latest last */
+    private array $moves = [];
 
     /** @var list<Report> */
     private array $moderated = [];
@@ -53,7 +75,20 @@ final class ReportsFake extends ReportsManager
 
     public function create(CreateReportData $data): Report
     {
-        $this->reported[] = $data;
+        $reasons = $this->container->make(ReasonRegistry::class);
+
+        if (! $reasons->isAllowed($data->reason)) {
+            throw UnknownReportReasonException::slug($data->reason, $reasons->all());
+        }
+
+        // Validated before anything is recorded, as the real filing does.
+        ReportsConfig::threshold();
+
+        $existing = DuplicateReports::stored($data) ?? $this->filedDuplicateOf($data);
+
+        if ($existing instanceof Report) {
+            throw DuplicateReportException::for($existing);
+        }
 
         $report = ReportModel::new();
         $report->forceFill([
@@ -67,6 +102,9 @@ final class ReportsFake extends ReportsManager
             'status' => Status::Pending,
         ]);
 
+        $this->reported[] = $data;
+        $this->filed[] = $report;
+
         return $report;
     }
 
@@ -77,6 +115,10 @@ final class ReportsFake extends ReportsManager
      */
     public function openModeration(Report $report, array $moderators, ApprovalRule $rule, ?int $quorum = null): ApprovalRequest
     {
+        if ($moderators === []) {
+            throw MissingModeratorsException::forReport($report);
+        }
+
         $this->moderated[] = $report;
 
         $model = ApprovalRequestModelResolver::class();
@@ -96,6 +138,8 @@ final class ReportsFake extends ReportsManager
 
     public function resolve(Report $report, ?Model $by = null, ?string $note = null): Report
     {
+        $this->move($report, Status::Resolved);
+
         $this->resolved[] = new RecordedDecision($report, $by, $note);
 
         return $report;
@@ -103,6 +147,8 @@ final class ReportsFake extends ReportsManager
 
     public function reject(Report $report, ?Model $by = null, ?string $note = null): Report
     {
+        $this->move($report, Status::Rejected);
+
         $this->rejected[] = new RecordedDecision($report, $by, $note);
 
         return $report;
@@ -113,6 +159,8 @@ final class ReportsFake extends ReportsManager
      */
     public function changeStatus(Report $report, Status $status): Report
     {
+        $this->move($report, $status);
+
         $this->statusChanges[] = new RecordedStatusChange($report, $status);
 
         return $report;
@@ -120,6 +168,10 @@ final class ReportsFake extends ReportsManager
 
     public function prune(?int $days = null, bool $force = false): int
     {
+        if (($days ?? ReportsConfig::pruneAfterDays()) === null) {
+            throw MissingPruneWindowException::make();
+        }
+
         $this->pruned[] = new RecordedPrune($days, $force);
 
         // Nothing ran, so nothing was pruned.
@@ -235,6 +287,53 @@ final class ReportsFake extends ReportsManager
     public function assertNothingPruned(): void
     {
         PHPUnit::assertSame([], $this->pruned, 'Expected no reports to be pruned.');
+    }
+
+    /**
+     * Simulate the move: refused, as for real, when strict transitions are on and the
+     * status graph does not allow it; staying on the current status is always allowed.
+     *
+     * @throws InvalidStatusTransitionException
+     */
+    private function move(Report $report, Status $to): void
+    {
+        $from = $this->statusOf($report);
+
+        if ($from !== $to && ReportsConfig::strictTransitions() && ! $from->canTransitionTo($to)) {
+            throw InvalidStatusTransitionException::for($report, $from, $to);
+        }
+
+        $this->moves[] = new RecordedStatusChange($report, $to);
+    }
+
+    /**
+     * Where the fake last moved the report; its own status when it never did.
+     */
+    private function statusOf(Report $report): Status
+    {
+        foreach (array_reverse($this->moves) as $move) {
+            if (SameModel::is($move->report, $report)) {
+                return $move->status;
+            }
+        }
+
+        return $report->status;
+    }
+
+    /**
+     * An earlier report the fake filed that the new filing duplicates, or null.
+     */
+    private function filedDuplicateOf(CreateReportData $data): ?Report
+    {
+        foreach ($this->reported as $index => $earlier) {
+            $report = $this->filed[$index];
+
+            if (DuplicateReports::matches($earlier, $this->statusOf($report), $data)) {
+                return $report;
+            }
+        }
+
+        return null;
     }
 
     /**
