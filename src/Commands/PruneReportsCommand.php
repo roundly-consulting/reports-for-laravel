@@ -18,7 +18,9 @@ final class PruneReportsCommand extends Command
 
     public function handle(ReportsManager $reports): int
     {
-        $option = $this->option('days');
+        // The raw input, not option(): the signature types it string|null, but an
+        // Artisan::call() caller can pass an int.
+        $option = $this->input->getOption('days');
         $option = is_int($option) ? (string) $option : $option;
         $force = (bool) $this->option('force');
 
