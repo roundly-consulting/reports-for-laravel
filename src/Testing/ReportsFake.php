@@ -18,6 +18,7 @@ use RoundlyConsulting\Reports\Exceptions\DuplicateReportException;
 use RoundlyConsulting\Reports\Exceptions\InvalidStatusTransitionException;
 use RoundlyConsulting\Reports\Exceptions\MissingModeratorsException;
 use RoundlyConsulting\Reports\Exceptions\MissingPruneWindowException;
+use RoundlyConsulting\Reports\Exceptions\ModerationNotAllowedException;
 use RoundlyConsulting\Reports\Exceptions\UnknownReportReasonException;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\ReportsManager;
@@ -36,7 +37,8 @@ use RoundlyConsulting\Reports\Support\ReportsConfig;
  *
  * Before recording, it refuses what the real manager refuses, with the same exception,
  * and records nothing: an unknown reason or an invalid `reports.threshold`, a duplicate
- * (of a stored report or of one the fake filed), moderation without moderators, a prune
+ * (of a stored report or of one the fake filed), moderation without moderators or of a
+ * settled report or one already under moderation (stored, or opened by the fake), a prune
  * without a window, and a move the strict status graph forbids — checked against where
  * the fake last moved the report, else its own status. Moderation itself is not
  * simulated: approvals' request checks (an unsaved moderator, an unreachable quorum) and
@@ -117,6 +119,16 @@ final class ReportsFake extends ReportsManager
     {
         if ($moderators === []) {
             throw MissingModeratorsException::forReport($report);
+        }
+
+        $status = $this->statusOf($report);
+
+        if (! $status->isOpen()) {
+            throw ModerationNotAllowedException::settled($report, $status);
+        }
+
+        if ($this->underModeration($report)) {
+            throw ModerationNotAllowedException::alreadyOpen($report);
         }
 
         $this->moderated[] = $report;
@@ -318,6 +330,20 @@ final class ReportsFake extends ReportsManager
         }
 
         return $report->status;
+    }
+
+    /**
+     * Whether the fake opened moderation on the report, or a stored request is pending.
+     */
+    private function underModeration(Report $report): bool
+    {
+        foreach ($this->moderated as $moderated) {
+            if (SameModel::is($moderated, $report)) {
+                return true;
+            }
+        }
+
+        return $report->exists && $report->isUnderModeration();
     }
 
     /**

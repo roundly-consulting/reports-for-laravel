@@ -18,6 +18,11 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
   window (so `reports:prune` fails under the fake too), and a status move `strict_transitions`
   forbids. It used to record all of these, so a test could pass over a call that fails in
   production.
+- `Reports::moderate()->open()` now throws the new `ModerationNotAllowedException` for a settled
+  (resolved, rejected or closed) report, or one that already has a pending moderation request. Both
+  used to open a request that left the report stuck: a settled report silently ignored the
+  moderators' outcome, and a second request kept the report under moderation after the first one
+  had decided it.
 
 ## 1.0.0 - 2026-10-03
 

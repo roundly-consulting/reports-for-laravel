@@ -10,6 +10,7 @@ use RoundlyConsulting\Reports\Events\ReportRejected;
 use RoundlyConsulting\Reports\Events\ReportResolved;
 use RoundlyConsulting\Reports\Events\ReportStatusChanged;
 use RoundlyConsulting\Reports\Exceptions\MissingModeratorsException;
+use RoundlyConsulting\Reports\Exceptions\ModerationNotAllowedException;
 use RoundlyConsulting\Reports\Facades\Reports;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\Tests\UserTestModel;
@@ -93,4 +94,59 @@ it('resolves immediately when there is no open moderation request', function ():
     expect($resolved->status)->toBe(Status::Resolved)
         ->and($resolved->resolved_by_id)->toBe($admin->getKey())
         ->and($resolved->resolution_note)->toBe('Done.');
+});
+
+it('refuses to moderate a settled report', function (Status $status): void {
+    $report = Report::factory()->status($status)->create();
+
+    expect(fn () => Reports::moderate($report)->requiring([UserTestModel::create()])->open())
+        ->toThrow(ModerationNotAllowedException::class, "is already settled [{$status->value}]");
+
+    expect($report->approvalRequests()->count())->toBe(0);
+})->with([Status::Resolved, Status::Rejected, Status::Closed]);
+
+it('checks the stored status, not a stale copy of the report', function (): void {
+    $report = Report::factory()->pending()->create();
+    $stale = Report::query()->findOrFail($report->getKey());
+
+    Reports::resolve($report);
+
+    expect(fn () => Reports::moderate($stale)->requiring([UserTestModel::create()])->open())
+        ->toThrow(ModerationNotAllowedException::class, 'is already settled [resolved]');
+
+    expect($report->approvalRequests()->count())->toBe(0);
+});
+
+it('refuses a second moderation request while one is pending', function (): void {
+    $report = Report::factory()->pending()->create();
+
+    $first = Reports::moderate($report)->requiring([UserTestModel::create()])->open();
+
+    expect(fn () => Reports::moderate($report)->requiring([UserTestModel::create()])->open())
+        ->toThrow(ModerationNotAllowedException::class, 'already has a pending moderation request');
+
+    expect($report->approvalRequests()->sole()->is($first))->toBeTrue();
+});
+
+it('moderates a report in review', function (): void {
+    $report = Report::factory()->inReview()->create();
+
+    $request = Reports::moderate($report)->requiring([UserTestModel::create()])->open();
+
+    expect($request->exists)->toBeTrue()
+        ->and($report->isUnderModeration())->toBeTrue();
+});
+
+it('opens a fresh request once a moderated report is reopened', function (): void {
+    $report = Report::factory()->pending()->create();
+    $moderator = UserTestModel::create();
+
+    Reports::moderate($report)->requiring([$moderator])->rule(ApprovalRule::Any)->open();
+    Reports::resolve($report, $moderator);
+    Reports::changeStatus($report, Status::Pending);
+
+    Reports::moderate($report)->requiring([$moderator])->open();
+
+    expect($report->approvalRequests()->count())->toBe(2)
+        ->and($report->isUnderModeration())->toBeTrue();
 });

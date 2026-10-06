@@ -10,6 +10,7 @@ use RoundlyConsulting\Reports\Exceptions\DuplicateReportException;
 use RoundlyConsulting\Reports\Exceptions\InvalidStatusTransitionException;
 use RoundlyConsulting\Reports\Exceptions\MissingModeratorsException;
 use RoundlyConsulting\Reports\Exceptions\MissingPruneWindowException;
+use RoundlyConsulting\Reports\Exceptions\ModerationNotAllowedException;
 use RoundlyConsulting\Reports\Exceptions\UnknownReportReasonException;
 use RoundlyConsulting\Reports\Facades\Reports;
 use RoundlyConsulting\Reports\Models\Report;
@@ -225,4 +226,41 @@ it('allows any move when strict transitions are off', function (bool $fake): voi
     $reports?->assertRejected($report);
 
     expect($report->fresh()?->status)->toBe($fake ? Status::Pending : Status::Rejected);
+})->with('managers');
+
+it('refuses to moderate a settled report', function (bool $fake): void {
+    $report = Report::factory()->pending()->create();
+    $reports = parityFake($fake);
+
+    Reports::resolve($report);
+
+    expect(fn () => Reports::moderate($report)->requiring([$this->user])->open())
+        ->toThrow(ModerationNotAllowedException::class, 'is already settled [resolved]')
+        ->and(fn () => Reports::moderate(Report::factory()->rejected()->create())->requiring([$this->user])->open())
+        ->toThrow(ModerationNotAllowedException::class, 'is already settled [rejected]');
+
+    $reports?->assertNothingModerated();
+})->with('managers');
+
+it('refuses a second moderation request while one is pending', function (bool $fake): void {
+    $report = Report::factory()->pending()->create();
+    $opened = Report::factory()->pending()->create();
+    Reports::moderate($opened)->requiring([$this->user])->open();
+    $reports = parityFake($fake);
+
+    Reports::moderate($report)->requiring([$this->user])->open();
+
+    expect(fn () => Reports::moderate($report)->requiring([$this->user])->open())
+        ->toThrow(ModerationNotAllowedException::class, 'already has a pending moderation request')
+        ->and(fn () => Reports::moderate($opened)->requiring([$this->user])->open())
+        ->toThrow(ModerationNotAllowedException::class, 'already has a pending moderation request');
+
+    expect($report->approvalRequests()->count())->toBe($fake ? 0 : 1)
+        ->and($opened->approvalRequests()->count())->toBe(1);
+
+    if ($reports instanceof ReportsFake) {
+        $reports->assertModerated($report);
+
+        expect(fn () => $reports->assertModerated($opened))->toThrow(AssertionFailedError::class);
+    }
 })->with('managers');
