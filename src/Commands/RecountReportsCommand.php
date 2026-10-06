@@ -17,8 +17,22 @@ final class RecountReportsCommand extends Command
 
     public function handle(): int
     {
-        $threshold = $this->option('threshold');
-        $minimum = ($threshold !== null && $threshold !== '') ? (int) $threshold : 1;
+        // The raw input, not option(): the signature types it string|null, but an
+        // Artisan::call() caller can pass an int.
+        $threshold = $this->input->getOption('threshold');
+        $threshold = is_int($threshold) ? (string) $threshold : $threshold;
+        $minimum = 1;
+
+        if (is_string($threshold) && $threshold !== '') {
+            // A blunt (int) cast read "abc" and "-3" as "list everything" and "2.9" as 2.
+            if (preg_match('/^\d+$/', $threshold) !== 1) {
+                $this->components->error('--threshold must be a whole number (0 or more).');
+
+                return self::FAILURE;
+            }
+
+            $minimum = (int) $threshold;
+        }
 
         $rows = $this->newReport()->newQuery()
             ->whereIn('status', $this->openStatuses())

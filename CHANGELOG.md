@@ -39,6 +39,9 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
   `LogicException` and writes nothing. It used to store a report with a NULL id that no relation
   finds, and a second such report by the same user on another unsaved model of the class was
   refused as a duplicate.
+- `reports:recount --threshold` now refuses a value that is not a whole number (`abc`, `-3`, `2.9`)
+  and exits with an error, like `reports:prune --days`. It used to list every subject for junk or
+  negative values and truncate decimals.
 
 ## 1.0.0 - 2026-10-03
 
