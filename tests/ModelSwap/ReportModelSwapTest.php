@@ -5,6 +5,7 @@ declare(strict_types=1);
 use RoundlyConsulting\Reports\Enums\Reason;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Facades\Reports;
+use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\Tests\Fixtures\CustomReportModel;
 use RoundlyConsulting\Reports\Tests\PostTestModel;
 use RoundlyConsulting\Reports\Tests\UserTestModel;
@@ -82,6 +83,22 @@ it('answers duplicate and aggregation queries through the swapped model', functi
         ->and($post->isReportedBy($user))->toBeTrue()
         ->and($post->reportsCount())->toBe(1)
         ->and($post->reports()->first())->toBeInstanceOf(CustomReportModel::class);
+});
+
+/**
+ * The factory the package ships is part of the seam: a host test seeding through it must get
+ * rows made as its own model — counted on the subclass, so its casts and events ran — whether
+ * it calls the factory on the subclass or on the packaged model.
+ */
+it('builds the host report model from the packaged factory', function (): void {
+    expect('reports.model')->toHonourModelSwap(CustomReportModel::class, function (): array {
+        $post = PostTestModel::query()->create();
+
+        return [
+            CustomReportModel::factory()->against($post)->create(),
+            Report::factory()->against($post)->resolved()->create(),
+        ];
+    });
 });
 
 // The structural half of the seam — `Report` is non-final (reports #33 shipped it final),

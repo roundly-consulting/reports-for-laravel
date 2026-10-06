@@ -10,11 +10,24 @@ use Illuminate\Support\Carbon;
 use RoundlyConsulting\Reports\Enums\Reason;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\Support\ReportModel;
 
 /** @extends Factory<Report> */
 final class ReportFactory extends Factory
 {
     protected $model = Report::class;
+
+    /**
+     * Build the model the host configured, not the packaged one: a host that points
+     * `reports.model` at its own subclass gets that subclass, with its casts and events,
+     * out of the factory the package ships.
+     *
+     * @return class-string<Report>
+     */
+    public function modelName(): string
+    {
+        return ReportModel::class();
+    }
 
     /** @return array<model-property<Report>, mixed> */
     public function definition(): array

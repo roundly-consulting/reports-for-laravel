@@ -58,8 +58,10 @@ it('resolves a host report and dedupes against it', function (): void {
 it('prunes and recounts host reports from the console', function (): void {
     $post = PostTestModel::query()->create();
 
-    CustomReport::factory()->against($post)->create();
+    $seeded = CustomReport::factory()->against($post)->create();
     CustomReport::factory()->against($post)->count(2)->create();
+
+    expect($seeded)->toBeInstanceOf(CustomReport::class);
 
     $this->artisan('reports:recount')->assertSuccessful();
 

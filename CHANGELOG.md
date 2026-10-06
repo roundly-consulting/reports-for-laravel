@@ -32,6 +32,9 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
   used to open a request that left the report stuck: a settled report silently ignored the
   moderators' outcome, and a second request kept the report under moderation after the first one
   had decided it.
+- `Report::factory()` (and a subclass's `factory()`) now builds the model configured in
+  `reports.model`. It always built the packaged `Report`, so a host model's casts and events never
+  ran for seeded reports.
 
 ## 1.0.0 - 2026-10-03
 
