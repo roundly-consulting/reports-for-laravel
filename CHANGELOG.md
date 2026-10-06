@@ -15,6 +15,11 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
   installs; the default keeps the schema exactly as it was. Converting an existing install is a
   data migration, described in the docs.
 
+### Changed
+
+- Requires `roundly-consulting/approvals-for-laravel` `^1.0.1`: UUID moderation on PostgreSQL
+  needs its `0007` migration.
+
 ### Fixed
 
 - A model can now use both `GivesReports` and `HasReports` (users reporting users). Together they
