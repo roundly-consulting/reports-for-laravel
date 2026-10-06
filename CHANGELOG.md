@@ -6,6 +6,15 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
 
 ## Unreleased
 
+### Added
+
+- `reports.primary_key_type` (env `REPORTS_PRIMARY_KEY_TYPE`): `bigint` (the default), `uuid` or
+  `ulid` for the reports table's own id, honoured by the migration and the `Report` model. Set it
+  to match `approvals.key_type`: with UUID-keyed moderators on PostgreSQL, moderation could not
+  work before, because approvals stores the report id in a uuid column. It applies to new
+  installs; the default keeps the schema exactly as it was. Converting an existing install is a
+  data migration, described in the docs.
+
 ### Fixed
 
 - A model can now use both `GivesReports` and `HasReports` (users reporting users). Together they

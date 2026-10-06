@@ -48,6 +48,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Primary Key Type (the reports table's own id)
+    |--------------------------------------------------------------------------
+    |
+    | The primary-key type of the reports table itself: "bigint" (the default),
+    | "uuid" or "ulid". Any other value throws an InvalidConfigurationException.
+    |
+    | A moderated report is an approvals subject, and approvals keys its subject
+    | columns by the same "approvals.key_type" as its actor (moderator) columns.
+    | On a strict engine such as PostgreSQL this must match it: with UUID-keyed
+    | moderators (APPROVALS_KEY_TYPE=uuid), set this to "uuid" too.
+    |
+    | It is fixed when the migration first runs, so choose it before publishing
+    | the migrations. Changing it later needs a data migration of your own.
+    |
+    | Supported: "bigint", "uuid", "ulid"
+    |
+    */
+
+    'primary_key_type' => env('REPORTS_PRIMARY_KEY_TYPE', 'bigint'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Reasons
     |--------------------------------------------------------------------------
     |

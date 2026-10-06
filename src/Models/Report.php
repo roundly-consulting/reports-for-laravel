@@ -15,6 +15,7 @@ use RoundlyConsulting\Approvals\Enums\ApprovalStatus;
 use RoundlyConsulting\Approvals\Interfaces\RequiresApprovalInterface;
 use RoundlyConsulting\Approvals\Models\ApprovalRequest;
 use RoundlyConsulting\Approvals\Traits\RequiresApproval;
+use RoundlyConsulting\Reports\Concerns\HasConfigurableKey;
 use RoundlyConsulting\Reports\Database\Factories\ReportFactory;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Events\ReportCreated;
@@ -22,7 +23,7 @@ use RoundlyConsulting\Reports\ReportsManager;
 use RoundlyConsulting\Reports\Support\ReportsConfig;
 
 /**
- * @property int $id
+ * @property int|string $id
  * @property int|string|null $reporter_id
  * @property string|null $reporter_type
  * @property int|string|null $reported_id
@@ -48,6 +49,8 @@ use RoundlyConsulting\Reports\Support\ReportsConfig;
  */
 class Report extends Model implements RequiresApprovalInterface
 {
+    use HasConfigurableKey;
+
     /** @use HasFactory<ReportFactory> */
     use HasFactory;
 

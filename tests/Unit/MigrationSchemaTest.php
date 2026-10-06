@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Testing\Database\DriverMatrix;
@@ -174,4 +176,69 @@ it('refuses to migrate on an unrecognized key type instead of falling back to bi
     })->toThrow(InvalidConfigurationException::class, 'Configuration value [reports.key_type] must be one of [bigint, uuid, ulid] (case-insensitive), [nonsense] given.');
 
     Schema::dropIfExists('fallback_reports');
+});
+
+/**
+ * `reports.primary_key_type` — the reports table's own id, which approvals' subject column
+ * points at when a report is moderated. The migration and the model must agree on it, or
+ * the package mints an id its own column cannot hold. On the bigint default the schema is
+ * the frozen one above.
+ */
+it('keys the reports table and the model by the configured primary key type', function (string $keyType, Closure $isKey, string $keyCast): void {
+    config()->set('reports.primary_key_type', $keyType);
+    config()->set('reports.table', 'reports');
+
+    runReportsMigration();
+
+    $report = Report::factory()->pending()->create();
+
+    expect($isKey($report->getKey()))->toBeTrue()
+        ->and($report->getKeyType())->toBe($keyCast)
+        ->and($report->getIncrementing())->toBe($keyType === 'bigint')
+        ->and(Report::query()->find($report->getKey())?->is($report))->toBeTrue();
+})->with([
+    'bigint' => ['bigint', fn (mixed $key): bool => is_int($key), 'int'],
+    'uuid' => ['uuid', fn (mixed $key): bool => is_string($key) && Str::isUuid($key), 'string'],
+    'ulid' => ['ulid', fn (mixed $key): bool => is_string($key) && Str::isUlid($key), 'string'],
+]);
+
+it('treats a malformed string id as no match, never a database error', function (string $keyType): void {
+    config()->set('reports.primary_key_type', $keyType);
+    config()->set('reports.table', 'reports');
+
+    runReportsMigration();
+
+    $report = Report::factory()->pending()->create();
+
+    // Route binding checks the id's shape before it reaches a strict uuid/char(26) column.
+    expect(fn () => $report->resolveRouteBinding('not-a-key'))->toThrow(ModelNotFoundException::class)
+        ->and($report->resolveRouteBinding($report->getKey())?->is($report))->toBeTrue();
+})->with(['uuid', 'ulid']);
+
+it('renders each primary key type as a distinct real column type', function (string $keyType, string $expected): void {
+    config()->set('reports.primary_key_type', $keyType);
+    config()->set('reports.table', 'pk_reports');
+
+    Schema::dropIfExists('pk_reports');
+    $migration = require __DIR__.'/../../database/migrations/create_reports_table.php';
+    $migration->up();
+
+    expect(pgsqlColumnType('pk_reports', 'id'))->toBe($expected);
+
+    Schema::dropIfExists('pk_reports');
+})->with([
+    'bigint' => ['bigint', 'bigint'],
+    'uuid' => ['uuid', 'uuid'],
+    'ulid' => ['ulid', 'character(26)'],
+])->skip($pgsqlOnly, 'needs the postgres catalog to tell the key types apart');
+
+it('refuses to migrate on an unrecognized primary key type', function (): void {
+    config()->set('reports.primary_key_type', 'nonsense');
+    config()->set('reports.table', 'pk_fallback_reports');
+
+    expect(function (): void {
+        runReportsMigration();
+    })->toThrow(InvalidConfigurationException::class, 'Configuration value [reports.primary_key_type] must be one of [bigint, uuid, ulid] (case-insensitive), [nonsense] given.');
+
+    Schema::dropIfExists('pk_fallback_reports');
 });

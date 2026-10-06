@@ -36,7 +36,8 @@ php artisan migrate
 ```
 
 The approvals migrations back moderation and are needed too. If your reporter, reportable or
-resolver models have UUID/ULID keys, set `REPORTS_KEY_TYPE` **before** migrating.
+resolver models have UUID/ULID keys, set `REPORTS_KEY_TYPE` **before** migrating. If your
+moderators have UUID keys (`APPROVALS_KEY_TYPE=uuid`), set `REPORTS_PRIMARY_KEY_TYPE=uuid` too.
 
 ## Usage
 

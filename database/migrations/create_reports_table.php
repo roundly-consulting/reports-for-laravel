@@ -15,12 +15,20 @@ return new class extends Migration
     {
         $tableName = ReportsConfig::table();
 
+        // The table's own id — what approvals' subject columns point at when a report is
+        // moderated. A different axis from the morph key type below.
+        $primaryKeyType = KeyType::fromConfig('reports.primary_key_type');
+
         // Throws for an unrecognized value, so a typo in the host's config fails
         // the migration instead of quietly building bigint columns.
         $keyType = KeyType::fromConfig('reports.key_type');
 
-        Schema::create($tableName, function (Blueprint $blueprint) use ($keyType, $tableName): void {
-            $blueprint->id();
+        Schema::create($tableName, function (Blueprint $blueprint) use ($primaryKeyType, $keyType, $tableName): void {
+            match ($primaryKeyType) {
+                KeyType::BigInt => $blueprint->id(),
+                KeyType::Uuid => $blueprint->uuid('id')->primary(),
+                KeyType::Ulid => $blueprint->ulid('id')->primary(),
+            };
 
             // Reporter is nullable so anonymous / guest reports are supported.
             $blueprint->morphKey('reporter', $keyType, nullable: true);

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Reports\Tests\Fixtures\SwappedReportTestCase;
+use RoundlyConsulting\Reports\Tests\Fixtures\UuidKeysTestCase;
 use RoundlyConsulting\Reports\Tests\TestCase;
 
 // Explicit paths, not `->in(__DIR__)`: the ModelSwap directory below needs a different
@@ -15,3 +16,7 @@ uses(TestCase::class)->in('ArchTest.php', 'Feature', 'Unit');
 // providers boot, so it runs on its own base case in its own directory — Pest binds a
 // test case per directory, not per file.
 uses(SwappedReportTestCase::class)->in('ModelSwap');
+
+// UUID moderators need `approvals.key_type` and the reports key types set before the
+// migrations run, so this directory gets its own base case too.
+uses(UuidKeysTestCase::class)->in('KeyTypes');
