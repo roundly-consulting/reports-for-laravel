@@ -9,10 +9,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Models\Report;
-use RoundlyConsulting\Reports\Support\ReportModel;
+use RoundlyConsulting\Reports\Traits\Concerns\ResolvesReportModel;
 
 trait HasReports
 {
+    use ResolvesReportModel;
+
     /**
      * @return MorphMany<Report, $this>
      */
@@ -117,13 +119,5 @@ trait HasReports
         }
 
         return $query;
-    }
-
-    /**
-     * @return class-string<Report>
-     */
-    private function reportModel(): string
-    {
-        return ReportModel::class();
     }
 }

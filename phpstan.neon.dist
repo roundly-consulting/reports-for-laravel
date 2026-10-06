@@ -20,3 +20,8 @@ parameters:
         -
             identifier: trait.unused
             path: src/Traits/GivesReports.php
+        # Shared by the two traits above (and only them), so it is unused in source for
+        # the same reason.
+        -
+            identifier: trait.unused
+            path: src/Traits/Concerns/ResolvesReportModel.php

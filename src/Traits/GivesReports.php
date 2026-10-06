@@ -11,10 +11,12 @@ use RoundlyConsulting\Reports\Enums\Reason;
 use RoundlyConsulting\Reports\Models\Report;
 use RoundlyConsulting\Reports\ReportsManager;
 use RoundlyConsulting\Reports\Support\PendingReport;
-use RoundlyConsulting\Reports\Support\ReportModel;
+use RoundlyConsulting\Reports\Traits\Concerns\ResolvesReportModel;
 
 trait GivesReports
 {
+    use ResolvesReportModel;
+
     /**
      * @return MorphMany<Report, $this>
      */
@@ -45,13 +47,5 @@ trait GivesReports
     public function report(Model $model): PendingReport
     {
         return app(ReportsManager::class)->report($model)->by($this);
-    }
-
-    /**
-     * @return class-string<Report>
-     */
-    private function reportModel(): string
-    {
-        return ReportModel::class();
     }
 }

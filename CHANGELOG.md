@@ -6,6 +6,11 @@ All notable changes to `reports-for-laravel` are documented in this file. The fo
 
 ## Unreleased
 
+### Fixed
+
+- A model can now use both `GivesReports` and `HasReports` (users reporting users). Together they
+  were a fatal trait collision.
+
 ## 1.0.0 - 2026-10-03
 
 Initial public release.

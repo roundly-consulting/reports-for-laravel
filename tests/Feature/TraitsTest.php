@@ -6,6 +6,7 @@ use RoundlyConsulting\Reports\Enums\Reason;
 use RoundlyConsulting\Reports\Enums\Status;
 use RoundlyConsulting\Reports\Exceptions\DuplicateReportException;
 use RoundlyConsulting\Reports\Models\Report;
+use RoundlyConsulting\Reports\Tests\Fixtures\MemberTestModel;
 use RoundlyConsulting\Reports\Tests\PostTestModel;
 use RoundlyConsulting\Reports\Tests\UserTestModel;
 
@@ -61,4 +62,18 @@ it('returns reports for a reported subject', function (): void {
     $this->user->giveReportTo($this->post, 'Review me.', Reason::Spam);
 
     expect($this->post->reports)->toHaveCount(1);
+});
+
+it('lets one model both file reports and be reported', function (): void {
+    $alice = MemberTestModel::create();
+    $bob = MemberTestModel::create();
+
+    $report = $alice->giveReportTo($bob, 'Rude.', Reason::Harassment);
+    $fluent = $bob->report($alice)->for(Reason::Spam)->create();
+
+    expect($bob->reports()->sole()->is($report))->toBeTrue()
+        ->and($alice->givenReports()->sole()->is($report))->toBeTrue()
+        ->and($alice->reports()->sole()->is($fluent))->toBeTrue()
+        ->and($bob->givenReports()->sole()->is($fluent))->toBeTrue()
+        ->and($bob->isReportedBy($alice))->toBeTrue();
 });
