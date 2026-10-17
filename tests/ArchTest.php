@@ -60,6 +60,7 @@ ArchPresets::noLocalCryptoPrimitives('RoundlyConsulting\Reports');
  * checked.
  */
 ArchPresets::modelsResolveThroughSeam(__DIR__.'/../src', 'Support', ['reports.model']);
+ArchPresets::factoriesResolveThroughSeam(__DIR__.'/../database/factories', __DIR__.'/../src', 'Support');
 
 /**
  * The morph-key seam, guarded. Reports' `reporter` and `resolved_by` columns migrated off
